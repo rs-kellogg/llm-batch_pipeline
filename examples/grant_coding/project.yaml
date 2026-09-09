@@ -1,0 +1,57 @@
+version: 1
+
+project:
+  name: grant-topic-coding
+  description: Classify synthetic grant abstracts using a small codebook.
+
+input:
+  path: data/grants.csv
+  format: auto
+  id_column: grant_id
+  csv_encoding: utf-8
+  fields_sent:
+    title: project_title
+    text: abstract
+  columns_preserved:
+    - year
+    - investigator
+    - source_file
+  required_fields:
+    - text
+  missing_required: error
+  field_limits:
+    text:
+      overflow: error
+
+task:
+  rows_per_request: 3
+  output_schema: schema.json
+  max_input_tokens: 50000
+  max_output_tokens: 1200
+
+prompt:
+  version: "1.0"
+  system_file: prompts/system.txt
+  user_file: prompts/user.txt
+  context:
+    codebook:
+      path: context/codebook.csv
+      format: csv
+
+providers:
+  openai:
+    model: gpt-5-mini
+  anthropic:
+    model: claude-haiku-4-5
+
+budget:
+  max_estimated_usd: 5.0
+
+pilot:
+  sample_size: 4
+  random_seed: 42
+
+output:
+  write_parquet: true
+  write_csv: true
+  runs_directory: runs

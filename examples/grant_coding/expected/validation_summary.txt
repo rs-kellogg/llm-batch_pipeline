@@ -1,0 +1,7 @@
+Validation passed
+Rows: 10 | Requests: 4
+openai: estimated maximum cost shown from the dated pricing registry
+anthropic: estimated maximum cost shown from the dated pricing registry
+
+Exact dollar values can change when the package pricing registry or project-level overrides change.
+

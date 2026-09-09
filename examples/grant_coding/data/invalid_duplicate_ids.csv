@@ -1,0 +1,4 @@
+grant_id,project_title,abstract,year,investigator,source_file
+GRANT-001,First synthetic record,A unique abstract for the first row.,2026,A Researcher,invalid.csv
+GRANT-001,Second synthetic record,A different abstract hidden behind the same identifier.,2026,B Researcher,invalid.csv
+

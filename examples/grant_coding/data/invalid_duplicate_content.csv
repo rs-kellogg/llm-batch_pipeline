@@ -1,0 +1,4 @@
+grant_id,project_title,abstract,year,investigator,source_file
+GRANT-101,Repeated title,The same model-facing content appears twice.,2026,A Researcher,invalid.csv
+GRANT-102,Repeated title,The same model-facing content appears twice.,2025,B Researcher,invalid.csv
+
