@@ -93,7 +93,7 @@ Current adapter defaults should respect documented limits and keep them centrall
 - Mock both SDKs for submission, polling, cancellation, downloading, partial completion, retries, and idempotent re-execution. Mark credentialed live smoke tests as optional and never run them by default.
 - Test pilot metrics with and without gold labels and comparison metrics with missing rows, nullable values, and categorical disagreements.
 - Run a synthetic 300,000-row test to verify deterministic segmentation and bounded-memory preparation/processing.
-- Test every CLI command and `--help`, clean installation in the supplied `/Users/peilinliao/pliao_envs/openaillm` environment, and CI on Python 3.10–3.12.
+- Test every CLI command and `--help`, clean installation in a dedicated researcher-created mamba environment, and CI on Python 3.10–3.12.
 - Acceptance requires:
   - An interrupted run can resume without duplicate submission.
   - Every input row ends as valid, failed with a recorded reason, or explicitly excluded.

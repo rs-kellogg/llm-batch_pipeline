@@ -247,7 +247,8 @@ The example README must explain:
 Document this exact workflow, using actual CLI syntax:
 
 ```bash
-mamba activate /Users/peilinliao/pliao_envs/openaillm
+mamba create -n kllm-batch python=3.12 -y
+mamba activate kllm-batch
 
 python -m pip install -e .
 
@@ -364,7 +365,7 @@ Provider limits remain centralized and configurable. Current defaults reflect up
 - Test every command in the example README so documented commands cannot drift from the implementation.
 - Test pilot and comparison metrics with gold labels, nullable values, missing results, and categorical disagreements.
 - Run a synthetic 300,000-row test for bounded-memory processing, deterministic segmentation, compact state, and duplicate detection.
-- Verify clean installation and the complete CLI help tree in `/Users/peilinliao/pliao_envs/openaillm`.
+- Verify clean installation and the complete CLI help tree in a dedicated researcher-created mamba environment.
 
 ## Assumptions
 

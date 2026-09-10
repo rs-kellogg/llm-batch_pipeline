@@ -6,8 +6,12 @@ The package separates local preparation from paid API operations. `validate` and
 
 ## Install
 
+Create and activate your own dedicated mamba environment, then install the
+package from the repository root:
+
 ```bash
-mamba activate /Users/peilinliao/pliao_envs/openaillm
+mamba create -n kllm-batch python=3.12 -y
+mamba activate kllm-batch
 python -m pip install -e .
 kllm-batch --help
 ```

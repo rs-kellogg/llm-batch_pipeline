@@ -32,8 +32,8 @@ repository; this shorter file is its implementation index.
 Maintain `examples/grant_coding/` with synthetic input, a stable ID, two sent
 fields, preserved metadata, a codebook, complete system and user prompts,
 schema, two-provider YAML configuration, invalid duplicate fixtures, expected
-outputs, and a workflow README. The README covers installation in
-`/Users/peilinliao/pliao_envs/openaillm`, credentials, validation, pilots,
+outputs, and a workflow README. The README covers creating a dedicated mamba
+environment, credentials, validation, pilots,
 preparation, submission, synchronization, auditing, retry/merge, and provider
 comparison, and clearly marks commands that contact an API.
 

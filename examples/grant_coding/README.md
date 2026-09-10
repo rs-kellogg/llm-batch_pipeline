@@ -4,10 +4,12 @@ This example classifies ten entirely synthetic grants. It is safe to inspect and
 
 ## 1. Install
 
-From the repository root:
+Create and activate your own dedicated mamba environment. Then install the
+package from the repository root:
 
 ```bash
-mamba activate /Users/peilinliao/pliao_envs/openaillm
+mamba create -n kllm-batch python=3.12 -y
+mamba activate kllm-batch
 python -m pip install -e .
 ```
 
@@ -104,4 +106,3 @@ Each run contains `snapshot/`, `requests/`, `mappings/`, `raw/`, `results/`, and
 ## 12. Cost boundary
 
 `validate` and `prepare` are local. `pilot`, `submit`, `status`, `sync`, and `cancel` use provider APIs. Estimates are conservative projections, not invoices; actual token usage is captured after retrieval.
-

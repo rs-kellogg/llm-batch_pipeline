@@ -303,7 +303,7 @@ Provider limits remain centralized and configurable. Current defaults reflect up
 - Mock both provider SDKs for submission, polling, cancellation, downloading, partial completion, retries, and idempotence.
 - Test pilot and comparison metrics with gold labels, nullable values, missing results, and categorical disagreements.
 - Run a synthetic 300,000-row test to verify bounded-memory processing, deterministic segmentation, compact state, and duplicate detection.
-- Verify clean installation and the complete CLI help tree in `/Users/peilinliao/pliao_envs/openaillm`.
+- Verify clean installation and the complete CLI help tree in a dedicated researcher-created mamba environment.
 
 ## Assumptions
 
