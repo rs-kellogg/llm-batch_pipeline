@@ -6,6 +6,8 @@ project:
 
 input:
   path: data/grants.csv
+  # path: data/invalid_duplicate_content.csv
+  # path: data/invalid_duplicate_ids.csv
   format: auto
   id_column: grant_id
   csv_encoding: utf-8
