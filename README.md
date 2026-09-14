@@ -32,7 +32,9 @@ Never commit keys or place them in `project.yaml`.
 
 The complete synthetic [grant-coding example](examples/grant_coding/README.md) includes input data, a codebook, prompts, an output schema, provider settings, and every command in the workflow.
 
-For a new project:
+For a new project, `init` creates a minimal editable directory containing
+starter data, prompts, a schema, configuration, and an empty runs directory. It
+refuses to overwrite a non-empty directory:
 
 ```bash
 kllm-batch init my-project

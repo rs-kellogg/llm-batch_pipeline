@@ -13,6 +13,43 @@ mamba activate kllm-batch
 python -m pip install -e .
 ```
 
+### Starting your own project with `init`
+
+You do not need `init` to run this checked-in grant example. Use it when you
+are ready to create a separate project of your own:
+
+```bash
+kllm-batch init my-project
+```
+
+The command is local, requires no API key, and creates this starter structure:
+
+```text
+my-project/
+├── project.yaml
+├── schema.json
+├── data/
+│   └── input.csv
+├── context/
+├── prompts/
+│   ├── system.txt
+│   └── user.txt
+└── runs/
+```
+
+It will not overwrite a directory that already contains files. Replace the
+sample row in `data/input.csv`, configure the column mappings and providers in
+`project.yaml`, revise both prompts and `schema.json`, and then validate the
+new project:
+
+```bash
+kllm-batch validate -c my-project/project.yaml
+```
+
+The remainder of this README uses `examples/grant_coding/project.yaml`, but the
+same `validate` → `prepare` → inspect → `submit` workflow applies to the project
+created by `init`.
+
 ## 2. Configure credentials
 
 Set only the provider you plan to use:
