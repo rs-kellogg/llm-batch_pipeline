@@ -1,4 +1,5 @@
 from typer.testing import CliRunner
+import json
 import yaml
 
 import kellogg_llm_batch.core as core
@@ -12,8 +13,9 @@ runner = CliRunner()
 def test_help_lists_workflow_commands():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("validate", "pilot", "prepare", "submit", "status", "sync", "audit", "retry", "merge", "compare"):
+    for command in ("validate", "prepare", "submit", "status", "sync", "audit", "retry", "merge", "compare"):
         assert command in result.stdout
+    assert "pilot" not in result.stdout
 
 
 def test_example_validate_command(example_config):
@@ -36,11 +38,12 @@ def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, mo
     monkeypatch.setattr(core, "get_provider", lambda name: fake)
 
     assert runner.invoke(app, ["validate", "-c", str(config)]).exit_code == 0
-    assert runner.invoke(app, ["pilot", "generate", "-c", str(config), "--provider", "openai"]).exit_code == 0
-    pilot = next((tmp_path / "pilots").iterdir())
-    assert runner.invoke(app, ["pilot", "run", str(pilot), "--yes"]).exit_code == 0
+    assert runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai", "--sample-size", "4", "--seed", "42"]).exit_code == 0
+    sample_run = next((tmp_path / "runs").iterdir())
+    assert json.loads((sample_run / "manifest.json").read_text())["execution"] == "sync"
+    assert runner.invoke(app, ["submit", str(sample_run), "--yes"]).exit_code == 0
     assert runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai"]).exit_code == 0
-    run = next((tmp_path / "runs").iterdir())
+    run = next(path for path in (tmp_path / "runs").iterdir() if json.loads((path / "manifest.json").read_text())["purpose"] == "production")
     assert runner.invoke(app, ["submit", str(run), "--yes"]).exit_code == 0
     assert runner.invoke(app, ["status", str(run)]).exit_code == 0
     assert runner.invoke(app, ["sync", str(run)]).exit_code == 0

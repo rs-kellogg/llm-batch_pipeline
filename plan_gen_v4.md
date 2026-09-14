@@ -230,8 +230,7 @@ The example must include:
 
 The example README must explain:
 
-1. How to install the package in the provided mamba environment.
-/node.
+1. How to create a dedicated mamba environment and install the package.
 2. How to set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` without committing credentials.
 3. How to inspect the source data, prompts, codebook, schema, and YAML mappings.
 4. How to run local validation.
@@ -254,12 +253,14 @@ python -m pip install -e .
 
 kllm-batch validate -c examples/grant_coding/project.yaml
 
-kllm-batch pilot generate \
+kllm-batch prepare \
   -c examples/grant_coding/project.yaml \
-  --provider openai
+  --provider openai \
+  --sample-size 4 \
+  --seed 42
 
 # Inspect the generated records, rendered prompts, and exact provider payload.
-kllm-batch pilot run PILOT_DIR
+kllm-batch submit PILOT_RUN_ID
 
 kllm-batch prepare \
   -c examples/grant_coding/project.yaml \
@@ -316,10 +317,8 @@ Write state through a same-directory temporary file followed by atomic replaceme
 
 - `kllm-batch init DIRECTORY` — scaffold an annotated project and runnable example structure.
 - `kllm-batch validate -c project.yaml [--report PATH]` — run local configuration, duplicate, input, schema, size, and cost checks.
-- `kllm-batch pilot generate -c project.yaml --provider PROVIDER` — locally build a deterministic sample, rendered prompts, schema, and exact provider payloads for inspection.
-- `kllm-batch pilot run PILOT_DIR` — run the exact reviewed payloads and report validity, metrics, and projected cost.
-- `kllm-batch prepare -c project.yaml --provider openai|anthropic` — rerun validation and create an immutable prepared run.
-- `kllm-batch submit RUN_ID` — submit prepared segments after cost confirmation; `--yes` supports automation.
+- `kllm-batch prepare -c project.yaml --provider openai|anthropic [--sample-size N --seed S | --ids-file PATH] [--execution sync|batch]` — rerun validation, select all or pilot records, and create an immutable run with inspectable records, rendered prompts, exact provider payloads, and cost estimate. Selections default to synchronous execution; all rows default to batch.
+- `kllm-batch submit RUN_ID` — execute the exact prepared artifacts after cost confirmation; `--yes` supports automation. Synchronous runs process immediately, while batch runs continue through `status` and `sync`.
 - `kllm-batch status RUN_ID` — show cached and current remote status.
 - `kllm-batch sync RUN_ID [--watch]` — poll, download, normalize, and process idempotently.
 - `kllm-batch cancel RUN_ID` — cancel active jobs without deleting artifacts.

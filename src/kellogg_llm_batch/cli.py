@@ -8,7 +8,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from .core import audit_run, cancel_run, compare_runs, generate_pilot, merge_run, prepare_retry, prepare_run, resolve_pilot, run_pilot, status_run, submit_run, sync_run
+from .core import audit_run, cancel_run, compare_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, sync_run
 from .scaffold import scaffold_project
 from .state import resolve_run
 from .validation import ProjectValidationError, validate_project
@@ -19,11 +19,6 @@ app = typer.Typer(
     help="Reliable, reproducible LLM batch pipelines for research coding and extraction.",
     no_args_is_help=True,
 )
-pilot_app = typer.Typer(
-    help="Generate inspectable pilot artifacts, then run those exact saved requests.",
-    no_args_is_help=True,
-)
-app.add_typer(pilot_app, name="pilot")
 console = Console()
 
 
@@ -87,18 +82,33 @@ def _print_validation(report: dict) -> None:
 def prepare_command(
     config: Path = typer.Option(..., "--config", "-c", help="Path to project.yaml."),
     provider: str = typer.Option(..., help="Configured provider: openai or anthropic."),
+    sample_size: Optional[int] = typer.Option(None, min=1, help="Prepare a deterministic random sample instead of all rows."),
+    seed: Optional[int] = typer.Option(None, help="Random seed used with --sample-size; defaults to evaluation.random_seed in project.yaml."),
+    ids_file: Optional[Path] = typer.Option(None, help="Text file containing one source record ID per line."),
+    execution: Optional[str] = typer.Option(None, help="Execution mode: sync or batch. Defaults to sync for a selection and batch for all rows."),
 ):
-    """Create an immutable, costed run after repeating local validation.
+    """Select records and create an immutable, inspectable, costed run.
 
-    Example: `kllm-batch prepare -c project.yaml --provider openai`. No API
-    key or remote call is required. Preparation stops on validation, pricing,
-    or budget errors; correct the project and prepare a new run.
+    Full run: `kllm-batch prepare -c project.yaml --provider openai`.
+    Pilot: add `--sample-size 20 --seed 42`; or use `--ids-file IDs.txt`.
+    Preparation is local and free. Inspect requests/model_records.jsonl,
+    requests/rendered_prompts.jsonl, and provider JSONL before submitting.
     """
     try:
-        run_dir = prepare_run(config, provider)
+        run_dir = prepare_run(
+            config,
+            provider,
+            sample_size=sample_size,
+            seed=seed,
+            ids_file=ids_file,
+            execution=execution,
+        )
         manifest = json.loads((run_dir / "manifest.json").read_text())
         console.print(f"Prepared run: [bold]{run_dir}[/bold]")
+        console.print(f"Purpose: {manifest['purpose']} | Selection: {manifest['selection']['method']} | Execution: {manifest['execution']}")
+        console.print(f"Selected rows: {manifest['selected_rows']:,} of {manifest['source_total_rows']:,}")
         console.print(f"Estimated maximum cost: ${manifest['cost_estimate']['estimated_usd']:.4f}")
+        console.print(f"Inspect: {run_dir / 'requests' / 'rendered_prompts.jsonl'}")
         console.print(f"Submit with: kllm-batch submit {run_dir}")
     except Exception as exc:
         _fail(exc)
@@ -109,20 +119,22 @@ def submit_command(
     run: Path = typer.Argument(..., help="Run directory printed by prepare."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm submission non-interactively."),
 ):
-    """Submit a prepared run after confirming its recorded estimate.
+    """Execute an inspected run using its recorded sync or batch mode.
 
     Example: `kllm-batch submit RUN_ID`; use `--yes` only in reviewed
-    automation. Requires the provider API key and can incur cost. Repeating the
-    command is idempotent for segments whose remote batch IDs were saved.
+    automation. Requires the provider API key and can incur cost. Synchronous
+    runs process immediately; batch runs continue through status and sync.
     """
     try:
         run_dir = resolve_run(run)
         manifest = json.loads((run_dir / "manifest.json").read_text())
         estimate = manifest["cost_estimate"]["estimated_usd"]
-        if not yes and not typer.confirm(f"Submit {manifest['request_count']} requests with estimated maximum cost ${estimate:.4f}?"):
+        mode = manifest.get("execution", "batch")
+        if not yes and not typer.confirm(f"Execute {manifest['request_count']} {mode} request(s) with estimated maximum cost ${estimate:.4f}?"):
             raise typer.Abort()
         state = submit_run(run_dir)
-        console.print(f"Submitted run {state['run_id']}")
+        action = "Processed" if mode == "sync" else "Submitted"
+        console.print(f"{action} run {state['run_id']} — {state['status']}")
     except typer.Abort:
         console.print("Submission cancelled.")
         raise typer.Exit()
@@ -246,57 +258,6 @@ def compare_command(
     """
     try:
         _print_json(compare_runs(run_a, run_b))
-    except Exception as exc:
-        _fail(exc)
-
-
-@pilot_app.command("generate")
-def pilot_generate_command(
-    config: Path = typer.Option(..., "--config", "-c", help="Path to project.yaml."),
-    provider: str = typer.Option(..., help="Configured provider: openai or anthropic."),
-):
-    """Generate a deterministic sample and rendered requests for inspection.
-
-    Example: `kllm-batch pilot generate -c project.yaml --provider openai`.
-    This is local and free. Validation runs first; the sample size and seed come
-    from project.yaml. Inspect sampled_records.jsonl, rendered_prompts.jsonl,
-    provider_requests.jsonl, schema.json, and manifest.json before running.
-    """
-    try:
-        pilot_dir = generate_pilot(config, provider)
-        manifest = json.loads((pilot_dir / "manifest.json").read_text(encoding="utf-8"))
-        console.print(f"Generated pilot: [bold]{pilot_dir}[/bold]")
-        console.print(f"Sampled records: {manifest['sample_size']} | Requests: {manifest['request_count']}")
-        console.print(f"Inspect: {pilot_dir / 'rendered_prompts.jsonl'}")
-        console.print(f"Run with: kllm-batch pilot run {pilot_dir}")
-    except Exception as exc:
-        _fail(exc)
-
-
-@pilot_app.command("run")
-def pilot_run_command(
-    pilot: Path = typer.Argument(..., help="Pilot directory printed by 'pilot generate'."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the API-backed pilot non-interactively."),
-    rerun: bool = typer.Option(False, help="Intentionally execute an already-run pilot again; may incur duplicate cost."),
-):
-    """Execute the exact provider requests saved by `pilot generate`.
-
-    Example: `kllm-batch pilot run PILOT_DIR`. This requires the selected
-    provider's API key and incurs cost. Review the generated artifacts first.
-    A completed pilot cannot run again unless --rerun is explicitly supplied.
-    """
-    try:
-        pilot_dir = resolve_pilot(pilot)
-        manifest = json.loads((pilot_dir / "manifest.json").read_text(encoding="utf-8"))
-        estimate = manifest["pilot_cost_estimate"].get("estimated_usd")
-        cost_text = "unknown" if estimate is None else f"${estimate:.4f}"
-        console.print(f"Pilot: {manifest['sample_size']} records in {manifest['request_count']} request(s); estimated maximum {cost_text}.")
-        if not yes and not typer.confirm("Run these exact saved API requests?"):
-            raise typer.Abort()
-        _print_json(run_pilot(pilot_dir, rerun=rerun))
-    except typer.Abort:
-        console.print("Pilot cancelled.")
-        raise typer.Exit()
     except Exception as exc:
         _fail(exc)
 

@@ -2,10 +2,10 @@
 
 `kellogg-llm-batch` provides the `kllm-batch` command for reliable, reproducible classification and structured extraction with the OpenAI and Anthropic batch APIs.
 
-The package separates local preparation from paid API operations. `validate`,
-`pilot generate`, and `prepare` are local. `pilot run`, `submit`, `status`,
-`sync`, and `cancel` contact a provider; model execution may incur usage
-charges.
+The package separates local preparation from paid API operations. `validate`
+and `prepare` are local. `submit` executes the exact prepared artifacts and may
+incur model charges. Batch-mode `status`, `sync`, and `cancel` also contact the
+provider.
 
 ## Install
 
@@ -39,13 +39,19 @@ kllm-batch init my-project
 kllm-batch validate -c my-project/project.yaml
 ```
 
-Generate a deterministic pilot for inspection before making an API call:
+Prepare a deterministic pilot for inspection before making an API call:
 
 ```bash
-kllm-batch pilot generate -c my-project/project.yaml --provider openai
-# Inspect sampled_records.jsonl, rendered_prompts.jsonl, and provider_requests.jsonl
-kllm-batch pilot run PILOT_DIR
+kllm-batch prepare -c my-project/project.yaml --provider openai \
+  --sample-size 20 --seed 42
+# Inspect requests/model_records.jsonl, rendered_prompts.jsonl, and segment_*.jsonl
+kllm-batch submit RUN_ID
 ```
+
+Supplying `--sample-size` or `--ids-file` makes the run a pilot and defaults to
+synchronous execution. Omitting both selects every row and defaults to the
+provider's batch API. `--execution sync|batch` overrides either default. Both
+paths use the same run layout, validation, audit, retry, and provenance code.
 
 One input row represents one research unit. `fields_sent` controls what providers receive; `columns_preserved` is carried to results locally. Duplicate IDs and exact duplicate model inputs are blocking errors.
 

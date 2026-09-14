@@ -131,3 +131,23 @@ def test_fields_sent_accepts_arbitrary_names_and_multiple_mappings(example_confi
     report = validate_project(config)
     assert report["valid"] is True
     assert report["canonical_rows"] == 10
+
+
+@pytest.mark.parametrize(
+    ("gold_columns", "code"),
+    [
+        ({"primary_label": "missing_human_label"}, "missing_gold_column"),
+        ({"not_in_schema": "year"}, "unknown_gold_output_field"),
+    ],
+)
+def test_evaluation_gold_mapping_is_validated(example_config, tmp_path, gold_columns, code):
+    raw = yaml.safe_load(example_config.read_text())
+    _absolute_support_paths(raw, example_config)
+    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["evaluation"]["gold_columns"] = gold_columns
+    config = tmp_path / "invalid-gold.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    with pytest.raises(ProjectValidationError) as exc:
+        validate_project(config)
+    assert code in {finding["code"] for finding in exc.value.report["findings"]}

@@ -8,7 +8,4 @@ build/
 *.egg-info/
 .env
 runs/
-pilots/
 examples/*/runs/
-examples/*/pilots/
-

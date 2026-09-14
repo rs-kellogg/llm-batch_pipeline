@@ -24,7 +24,9 @@ rather than importing their project-specific globals.
    required-but-nullable so both providers share the same contract.
 5. Put codebooks or taxonomies under `context/` and reference them in YAML.
 6. Run validation and correct all duplicate IDs/content upstream.
-7. Run a small pilot, inspect validity and cost, then prepare the full run.
+7. Prepare a small pilot with `--sample-size` or `--ids-file`, inspect its
+   records, rendered prompts, payloads, validity, and cost, then prepare the
+   full run with the same command and no selection option.
 
 Earlier outputs do not automatically become new-package runs because they lack
 the immutable manifest, mappings, and state contract. Preserve them as legacy

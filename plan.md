@@ -10,8 +10,9 @@ repository; this shorter file is its implementation index.
 - Support OpenAI Batch and Anthropic Message Batches through provider adapters.
 - Keep source data immutable and state inspectable in atomic JSON plus JSONL or
   Parquet row artifacts; do not introduce SQLite in v1.
-- Provide validate, two-phase pilot generate/run, prepare, submit, status, sync,
-  cancel, audit, retry, merge, and cross-provider compare commands.
+- Provide validate, prepare, submit, status, sync, cancel, audit, retry, merge,
+  and cross-provider compare commands. Pilot testing uses `prepare` record
+  selection and the same `submit` lifecycle as a full run.
 - Record source, prompt, schema, model, environment, cost, and row provenance.
 
 ## Input contract and blocking checks
@@ -33,8 +34,8 @@ Maintain `examples/grant_coding/` with synthetic input, a stable ID, two sent
 fields, preserved metadata, a codebook, complete system and user prompts,
 schema, two-provider YAML configuration, invalid duplicate fixtures, expected
 outputs, and a workflow README. The README covers creating a dedicated mamba
-environment, credentials, validation, pilots,
-preparation, submission, synchronization, auditing, retry/merge, and provider
+environment, credentials, validation, pilot selection and prompt inspection,
+submission, synchronization, auditing, retry/merge, and provider
 comparison, and clearly marks commands that contact an API.
 
 ## Acceptance
@@ -46,5 +47,5 @@ comparison, and clearly marks commands that contact an API.
 - Keep a separate opt-in 300,000-row stress test for deterministic large-run
   preparation and compact state.
 - Verify editable installation, the complete help tree, example validation,
-  dependency consistency, and wheel construction in the provided mamba
-  environment.
+  dependency consistency, and wheel construction in a researcher-created
+  dedicated mamba environment.

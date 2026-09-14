@@ -22,6 +22,7 @@ class FakeAdapter(ProviderAdapter):
     def __init__(self):
         self.batches = {}
         self.submissions = 0
+        self.sync_calls = 0
 
     def build_payload(self, custom_id, model, system_prompt, user_prompt, schema, max_output_tokens, options):
         return {"custom_id": custom_id, "body": {"model": model, "instructions": system_prompt, "input": user_prompt, "schema": schema}}
@@ -49,6 +50,7 @@ class FakeAdapter(ProviderAdapter):
         return NormalizedResult(custom_id=obj["custom_id"], status=obj["status"], response_text=obj.get("response_text"), model="fake-model", input_tokens=100, output_tokens=20)
 
     def run_sync(self, payload):
+        self.sync_calls += 1
         records = json.loads(payload["body"]["input"].split("Classify every record below:", 1)[1].strip())
         results = [{"record_id": record["record_id"], "primary_label": "other", "secondary_label": None, "confidence": 0.8, "justification": "Synthetic test result."} for record in records]
         return NormalizedResult(custom_id=payload["custom_id"], status="succeeded", response_text=json.dumps({"results": results}), model="fake-model", input_tokens=100, output_tokens=20)

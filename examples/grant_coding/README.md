@@ -76,42 +76,51 @@ kllm-batch validate -c examples/grant_coding/project.yaml
 
 This is local and free. It checks duplicate IDs, duplicate model-facing records, missing values, prompts, schema, and estimated costs. The two `invalid_duplicate_*.csv` files are teaching and test fixtures; point a copied YAML file at either one to see validation fail before request generation.
 
-## 5. Generate, inspect, and run a pilot
+## 5. Prepare, inspect, and run a pilot
 
-First generate the deterministic sample and its complete prompts locally:
+Prepare a deterministic sample and its complete prompts locally:
 
 ```bash
-kllm-batch pilot generate \
+kllm-batch prepare \
   -c examples/grant_coding/project.yaml \
-  --provider openai
+  --provider openai \
+  --sample-size 4 \
+  --seed 42
 ```
 
-This command makes no API call. It prints a `PILOT_DIR` under
-`examples/grant_coding/pilots/`. Inspect these files before approving model
-usage:
+This command makes no API call. It prints a `RUN_ID` under
+`examples/grant_coding/runs/`. Because records were selected, the manifest
+records `purpose: pilot` and defaults to `execution: sync`. Inspect these files
+before approving model usage:
 
-- `sampled_records.jsonl`: exactly the records substituted into
+- `requests/model_records.jsonl`: exactly the records substituted into
   `${records_json}`.
-- `sampled_source.csv` and `.parquet`: the sampled source rows, including local
-  preserved fields.
-- `rendered_prompts.jsonl`: readable system and fully rendered user prompts for
-  every request.
-- `provider_requests.jsonl`: the exact provider-native payloads that will run.
-- `schema.json` and `manifest.json`: the enforced response contract, hashes,
-  deterministic seed, selected IDs, and cost estimates.
+- `requests/canonical_input.csv` and `.parquet`: the selected source rows,
+  including local preserved fields.
+- `requests/rendered_prompts.jsonl`: readable system and fully rendered user
+  prompts for every request.
+- `requests/segment_*.jsonl`: the exact provider-native payloads that will run.
+- `snapshot/schema.json` and `manifest.json`: the enforced response contract,
+  hashes, deterministic seed, selected IDs, execution mode, and cost estimate.
 
 After reviewing those artifacts, run those exact saved requests:
 
 ```bash
-kllm-batch pilot run PILOT_DIR
+kllm-batch submit RUN_ID
 ```
 
-Only `pilot run` contacts the provider and may incur cost. It writes
-`results.json`, `predictions.csv`, and `predictions.parquet` into `PILOT_DIR`.
-It verifies the generated artifact hashes and refuses an accidental second
-execution unless `--rerun` is explicitly used. If review reveals a needed
-change, edit the source YAML, prompt, context, or data and generate a new pilot;
-do not patch the generated payload in place.
+Only `submit` contacts the provider and may incur cost. A synchronous pilot is
+processed immediately into the normal `results/` and `reports/` directories;
+it does not need `status` or `sync`. Submission verifies the request-artifact
+hashes and is idempotent. If review reveals a needed change, edit the source
+YAML, prompt, context, or data and prepare a new run; do not patch generated
+payloads in place.
+
+To select records deliberately instead of randomly, create a UTF-8 text file
+with one `grant_id` per line and use `--ids-file pilot_ids.txt`. Selection
+files with duplicate IDs, or IDs absent from the validated input, are rejected.
+For either selection method, add `--execution batch` if a batch pilot is
+preferred. Conversely, a full run can use `--execution sync` explicitly.
 
 ## 6. Prepare and inspect cost
 
@@ -145,8 +154,8 @@ This prepares a child run for retryable failed rows without submitting it. Revie
 ## 9. Run with Anthropic
 
 ```bash
-kllm-batch pilot generate -c examples/grant_coding/project.yaml --provider anthropic
-kllm-batch pilot run ANTHROPIC_PILOT_DIR
+kllm-batch prepare -c examples/grant_coding/project.yaml --provider anthropic --sample-size 4 --seed 42
+kllm-batch submit ANTHROPIC_PILOT_RUN_ID
 kllm-batch prepare -c examples/grant_coding/project.yaml --provider anthropic
 kllm-batch submit ANTHROPIC_RUN_ID
 kllm-batch status ANTHROPIC_RUN_ID
@@ -168,4 +177,8 @@ Each run contains `snapshot/`, `requests/`, `mappings/`, `raw/`, `results/`, and
 
 ## 12. Cost boundary
 
-`validate`, `pilot generate`, and `prepare` are local. `pilot run`, `submit`, `status`, `sync`, and `cancel` use provider APIs. Estimates are conservative projections, not invoices; actual token usage is captured after retrieval.
+`validate`, `prepare`, `audit`, `retry`, `merge`, and `compare` are local.
+`submit` uses a provider API and may incur model charges. For batch runs,
+`status`, `sync`, and `cancel` also use provider APIs. Estimates are
+conservative projections, not invoices; actual token usage is captured after
+processing.

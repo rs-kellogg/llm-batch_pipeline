@@ -82,6 +82,24 @@ def _validate_project(config_or_path: ProjectConfig | str | Path, report_path: s
             findings.append(AuditFinding(severity="error", code="missing_required_field", message=f"Source row {record.source_row} is missing required fields: {missing}", record_ids=[record.record_id] if record.record_id else [], source_rows=[record.source_row]))
     row_schema = load_row_schema(config)
     wrapped_schema(row_schema)
+    schema_properties = set(row_schema.get("properties", {}))
+    for output_field, source_column in config.evaluation.gold_columns.items():
+        if source_column not in df.columns:
+            findings.append(
+                AuditFinding(
+                    severity="error",
+                    code="missing_gold_column",
+                    message=f"Evaluation source column {source_column!r} was not found",
+                )
+            )
+        if output_field not in schema_properties:
+            findings.append(
+                AuditFinding(
+                    severity="error",
+                    code="unknown_gold_output_field",
+                    message=f"Evaluation output field {output_field!r} is not defined in schema.json",
+                )
+            )
     system_prompt, user_template = load_prompt_files(config)
     context = load_context(config)
     validate_template(user_template, context)

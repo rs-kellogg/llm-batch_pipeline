@@ -64,5 +64,5 @@ def scaffold_project(directory: str | Path) -> Path:
     (root / "prompts" / "system.txt").write_text("Code each record consistently using only the supplied evidence.\n", encoding="utf-8")
     (root / "prompts" / "user.txt").write_text("Records:\n\n${records_json}\n", encoding="utf-8")
     (root / "data" / "input.csv").write_text("record_id,text\nexample-001,Replace this row with research data.\n", encoding="utf-8")
-    (root / ".gitignore").write_text("runs/\npilots/\n.env\n", encoding="utf-8")
+    (root / ".gitignore").write_text("runs/\n.env\n", encoding="utf-8")
     return root

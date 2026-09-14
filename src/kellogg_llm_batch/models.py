@@ -49,6 +49,7 @@ class AuditFinding(BaseModel):
 class CostEstimate(BaseModel):
     provider: str
     model: str
+    execution: Literal["batch", "sync"] = "batch"
     request_count: int
     estimated_input_tokens: int
     maximum_output_tokens: int

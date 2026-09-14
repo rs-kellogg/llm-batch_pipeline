@@ -49,8 +49,7 @@ providers:
 budget:
   max_estimated_usd: 5.0
 
-pilot:
-  sample_size: 4
+evaluation:
   random_seed: 42
 
 output:

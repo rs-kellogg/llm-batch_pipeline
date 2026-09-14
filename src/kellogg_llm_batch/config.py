@@ -100,6 +100,16 @@ class ProviderSection(StrictModel):
     options: dict[str, Any] = Field(default_factory=dict)
     input_price_per_million: float | None = Field(default=None, ge=0)
     output_price_per_million: float | None = Field(default=None, ge=0)
+    sync_input_price_per_million: float | None = Field(default=None, ge=0)
+    sync_output_price_per_million: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def require_price_pairs(self):
+        if (self.input_price_per_million is None) != (self.output_price_per_million is None):
+            raise ValueError("input_price_per_million and output_price_per_million must be set together")
+        if (self.sync_input_price_per_million is None) != (self.sync_output_price_per_million is None):
+            raise ValueError("sync_input_price_per_million and sync_output_price_per_million must be set together")
+        return self
 
 
 class BudgetSection(StrictModel):
@@ -112,8 +122,7 @@ class OutputSection(StrictModel):
     runs_directory: Path = Path("runs")
 
 
-class PilotSection(StrictModel):
-    sample_size: int = Field(default=10, gt=0)
+class EvaluationSection(StrictModel):
     random_seed: int = 42
     gold_columns: dict[str, str] = Field(default_factory=dict)
 
@@ -127,7 +136,7 @@ class ProjectConfig(StrictModel):
     providers: dict[str, ProviderSection]
     budget: BudgetSection
     output: OutputSection = Field(default_factory=OutputSection)
-    pilot: PilotSection = Field(default_factory=PilotSection)
+    evaluation: EvaluationSection = Field(default_factory=EvaluationSection)
     config_path: Path = Field(exclude=True)
     base_dir: Path = Field(exclude=True)
 

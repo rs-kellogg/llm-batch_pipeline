@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 import kellogg_llm_batch.core as core
-from kellogg_llm_batch.core import audit_run, compare_runs, generate_pilot, pilot_project, prepare_retry, prepare_run, run_pilot, submit_run, sync_run
+from kellogg_llm_batch.core import audit_run, compare_runs, prepare_retry, prepare_run, submit_run, sync_run
 from kellogg_llm_batch.state import load_state, save_state
 
 from conftest import FakeAdapter
@@ -33,6 +33,10 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     config = _temporary_config(example_config, tmp_path)
     run = prepare_run(config, "openai")
     assert (run / "manifest.json").exists()
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["purpose"] == "production"
+    assert manifest["execution"] == "batch"
+    assert manifest["cost_estimate"]["execution"] == "batch"
     assert len(list((run / "requests").glob("segment_*.jsonl"))) == 1
     submit_run(run, fake)
     submit_run(run, fake)
@@ -67,18 +71,7 @@ def test_compare_exports_disagreements(example_config, tmp_path, monkeypatch):
     assert report["metrics"]["primary_label"]["percent_agreement"] < 1
 
 
-def test_pilot_validates_sample_output(example_config, tmp_path, monkeypatch):
-    fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
-    config = _temporary_config(example_config, tmp_path)
-    report = pilot_project(config, "openai", fake)
-    assert report["valid"] is True
-    assert report["sample_records"] == 4
-    assert report["valid_records"] == 4
-    assert report["actual_pilot_usage"]["input_tokens"] > 0
-
-
-def test_pilot_generate_then_run_exact_saved_requests(example_config, tmp_path, monkeypatch):
+def test_prepare_sample_then_submit_sync_uses_exact_saved_requests(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
     monkeypatch.setattr(core, "get_provider", lambda name: fake)
     config = _temporary_config(example_config, tmp_path)
@@ -91,30 +84,98 @@ def test_pilot_generate_then_run_exact_saved_requests(example_config, tmp_path, 
     raw["input"]["required_fields"] = ["document_body"]
     raw["input"]["field_limits"] = {}
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
-    pilot = generate_pilot(config, "openai")
+    run = prepare_run(config, "openai", sample_size=4, seed=17)
 
-    assert not (pilot / "results.json").exists()
-    assert (pilot / "sampled_source.csv").exists()
-    model_records = [json.loads(line) for line in (pilot / "sampled_records.jsonl").read_text(encoding="utf-8").splitlines()]
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["purpose"] == "pilot"
+    assert manifest["execution"] == "sync"
+    assert manifest["cost_estimate"]["execution"] == "sync"
+    assert manifest["selection"] == {"method": "random", "selected_count": 4, "seed": 17}
+    assert manifest["selected_rows"] == 4
+    model_records = [json.loads(line) for line in (run / "requests" / "model_records.jsonl").read_text(encoding="utf-8").splitlines()]
     assert len(model_records) == 4
     expected_model_fields = {"record_id", *raw["input"]["fields_sent"]}
     assert set(model_records[0]) == expected_model_fields
-    rendered = [json.loads(line) for line in (pilot / "rendered_prompts.jsonl").read_text(encoding="utf-8").splitlines()]
+    rendered = [json.loads(line) for line in (run / "requests" / "rendered_prompts.jsonl").read_text(encoding="utf-8").splitlines()]
     assert '"record_id"' in rendered[0]["user_prompt"]
     for logical_name in raw["input"]["fields_sent"]:
         assert f'"{logical_name}"' in rendered[0]["user_prompt"]
     assert "investigator" not in rendered[0]["user_prompt"]
 
-    report = run_pilot(pilot, fake)
-    assert report["valid"] is True
-    assert report["sample_records"] == 4
-    assert (pilot / "predictions.parquet").exists()
-    with pytest.raises(ValueError, match="already has results"):
-        run_pilot(pilot, fake)
-    requests_path = pilot / "provider_requests.jsonl"
-    requests_path.write_text(requests_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    state = submit_run(run, fake)
+    assert state["status"] == "completed"
+    assert state["stage"] == "audited"
+    assert len(pd.read_parquet(run / "results" / "results.parquet")) == 4
+    sync_calls = fake.sync_calls
+    submit_run(run, fake)
+    assert fake.sync_calls == sync_calls
+
+
+def test_prepare_with_explicit_ids_and_request_integrity(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    config = _temporary_config(example_config, tmp_path)
+    ids_file = tmp_path / "pilot_ids.txt"
+    ids_file.write_text("GRANT-007\nGRANT-002\n", encoding="utf-8")
+    run = prepare_run(config, "openai", ids_file=ids_file)
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["selection"]["method"] == "ids_file"
+    assert manifest["execution"] == "sync"
+    selected = pd.read_parquet(run / "requests" / "canonical_input.parquet")
+    assert selected["record_id"].tolist() == ["GRANT-002", "GRANT-007"]
+
+    prompts = run / "requests" / "rendered_prompts.jsonl"
+    prompts.write_text(prompts.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="artifact changed"):
-        run_pilot(pilot, fake, rerun=True)
+        submit_run(run, fake)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"sample_size": 2, "ids_file": "unused.txt"}, "only one record selection"),
+        ({"seed": 7}, "seed can only be used"),
+        ({"sample_size": 11}, "exceeds the 10 available records"),
+    ],
+)
+def test_prepare_rejects_invalid_selection_options(example_config, tmp_path, monkeypatch, kwargs, message):
+    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    config = _temporary_config(example_config, tmp_path)
+    with pytest.raises(ValueError, match=message):
+        prepare_run(config, "openai", **kwargs)
+    assert not (tmp_path / "runs").exists()
+
+
+def test_prepare_rejects_duplicate_and_unknown_explicit_ids(example_config, tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    config = _temporary_config(example_config, tmp_path)
+    ids_file = tmp_path / "pilot_ids.txt"
+    ids_file.write_text("GRANT-002\nGRANT-002\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate IDs"):
+        prepare_run(config, "openai", ids_file=ids_file)
+    assert not (tmp_path / "runs").exists()
+
+    ids_file.write_text("GRANT-002\nNOT-IN-SOURCE\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="do not exist in source"):
+        prepare_run(config, "openai", ids_file=ids_file)
+    assert not (tmp_path / "runs").exists()
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "purpose", "execution"),
+    [
+        ({"sample_size": 2, "execution": "batch"}, "pilot", "batch"),
+        ({"execution": "sync"}, "production", "sync"),
+    ],
+)
+def test_prepare_allows_explicit_execution_override(example_config, tmp_path, monkeypatch, kwargs, purpose, execution):
+    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    config = _temporary_config(example_config, tmp_path)
+    run = prepare_run(config, "openai", **kwargs)
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["purpose"] == purpose
+    assert manifest["execution"] == execution
+    assert manifest["cost_estimate"]["execution"] == execution
 
 
 class IncompleteAdapter(FakeAdapter):

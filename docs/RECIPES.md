@@ -17,18 +17,19 @@ Keep a human label in a local source column that is not sent to the model, then
 map the predicted field to it:
 
 ```yaml
-pilot:
-  sample_size: 40
+evaluation:
   random_seed: 2026
   gold_columns:
     primary_label: human_primary_label
 ```
 
-Run `pilot generate` first and inspect its saved records and rendered prompts;
-then use `pilot run PILOT_DIR`. The run reports exact-match accuracy for
-configured fields. The pilot-and-impute workflow is deliberately not
-automatic: inspect class balance, errors, and schema validity before selecting
-a model.
+Prepare the selection with
+`kllm-batch prepare -c project.yaml --provider openai --sample-size 40`, inspect
+its saved records and rendered prompts, and then use `kllm-batch submit RUN_ID`.
+The configured `evaluation.random_seed` is used when `--seed` is omitted. The
+run reports exact-match accuracy for configured fields. The pilot-and-impute
+workflow is deliberately not automatic: inspect class balance, errors, and
+schema validity before selecting a model.
 
 ## Configurable multi-row requests
 
