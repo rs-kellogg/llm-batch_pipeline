@@ -2,7 +2,10 @@
 
 `kellogg-llm-batch` provides the `kllm-batch` command for reliable, reproducible classification and structured extraction with the OpenAI and Anthropic batch APIs.
 
-The package separates local preparation from paid API operations. `validate` and `prepare` are local. `pilot`, `submit`, `status`, `sync`, and `cancel` contact a provider and may incur usage charges.
+The package separates local preparation from paid API operations. `validate`,
+`pilot generate`, and `prepare` are local. `pilot run`, `submit`, `status`,
+`sync`, and `cancel` contact a provider; model execution may incur usage
+charges.
 
 ## Install
 
@@ -34,6 +37,14 @@ For a new project:
 ```bash
 kllm-batch init my-project
 kllm-batch validate -c my-project/project.yaml
+```
+
+Generate a deterministic pilot for inspection before making an API call:
+
+```bash
+kllm-batch pilot generate -c my-project/project.yaml --provider openai
+# Inspect sampled_records.jsonl, rendered_prompts.jsonl, and provider_requests.jsonl
+kllm-batch pilot run PILOT_DIR
 ```
 
 One input row represents one research unit. `fields_sent` controls what providers receive; `columns_preserved` is carried to results locally. Duplicate IDs and exact duplicate model inputs are blocking errors.

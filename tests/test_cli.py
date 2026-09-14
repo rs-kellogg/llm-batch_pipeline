@@ -36,7 +36,9 @@ def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, mo
     monkeypatch.setattr(core, "get_provider", lambda name: fake)
 
     assert runner.invoke(app, ["validate", "-c", str(config)]).exit_code == 0
-    assert runner.invoke(app, ["pilot", "-c", str(config), "--provider", "openai", "--yes"]).exit_code == 0
+    assert runner.invoke(app, ["pilot", "generate", "-c", str(config), "--provider", "openai"]).exit_code == 0
+    pilot = next((tmp_path / "pilots").iterdir())
+    assert runner.invoke(app, ["pilot", "run", str(pilot), "--yes"]).exit_code == 0
     assert runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai"]).exit_code == 0
     run = next((tmp_path / "runs").iterdir())
     assert runner.invoke(app, ["submit", str(run), "--yes"]).exit_code == 0

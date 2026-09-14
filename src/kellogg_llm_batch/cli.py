@@ -8,8 +8,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from .core import audit_run, cancel_run, compare_runs, merge_run, pilot_project, prepare_retry, prepare_run, status_run, submit_run, sync_run
-from .config import load_config
+from .core import audit_run, cancel_run, compare_runs, generate_pilot, merge_run, prepare_retry, prepare_run, resolve_pilot, run_pilot, status_run, submit_run, sync_run
 from .scaffold import scaffold_project
 from .state import resolve_run
 from .validation import ProjectValidationError, validate_project
@@ -20,6 +19,11 @@ app = typer.Typer(
     help="Reliable, reproducible LLM batch pipelines for research coding and extraction.",
     no_args_is_help=True,
 )
+pilot_app = typer.Typer(
+    help="Generate inspectable pilot artifacts, then run those exact saved requests.",
+    no_args_is_help=True,
+)
+app.add_typer(pilot_app, name="pilot")
 console = Console()
 
 
@@ -246,32 +250,50 @@ def compare_command(
         _fail(exc)
 
 
-@app.command("pilot")
-def pilot_command(
+@pilot_app.command("generate")
+def pilot_generate_command(
     config: Path = typer.Option(..., "--config", "-c", help="Path to project.yaml."),
     provider: str = typer.Option(..., help="Configured provider: openai or anthropic."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the API-backed pilot."),
 ):
-    """Run a deterministic synchronous pilot against one provider.
+    """Generate a deterministic sample and rendered requests for inspection.
 
-    Example: `kllm-batch pilot -c project.yaml --provider openai`. Requires the
-    provider API key and incurs cost; confirmation is interactive unless
-    `--yes` is supplied. Validation runs first and the default sample size and
-    seed come from `project.yaml`. Fix pilot findings before batch preparation.
+    Example: `kllm-batch pilot generate -c project.yaml --provider openai`.
+    This is local and free. Validation runs first; the sample size and seed come
+    from project.yaml. Inspect sampled_records.jsonl, rendered_prompts.jsonl,
+    provider_requests.jsonl, schema.json, and manifest.json before running.
     """
     try:
-        config_object = load_config(config)
-        validation = validate_project(config_object)
-        full = validation["cost_estimates"].get(provider)
-        if full is None:
-            raise ValueError(f"Provider '{provider}' is not configured")
-        sample_fraction = min(1.0, config_object.pilot.sample_size / max(1, validation["source_rows"]))
-        projected = None if full["estimated_usd"] is None else full["estimated_usd"] * sample_fraction
-        cost_text = "unknown" if projected is None else f"approximately ${projected:.4f}"
-        console.print(f"Pilot sample: {min(config_object.pilot.sample_size, validation['source_rows'])} rows; projected maximum {cost_text}.")
-        if not yes and not typer.confirm("Run this API-backed pilot?"):
+        pilot_dir = generate_pilot(config, provider)
+        manifest = json.loads((pilot_dir / "manifest.json").read_text(encoding="utf-8"))
+        console.print(f"Generated pilot: [bold]{pilot_dir}[/bold]")
+        console.print(f"Sampled records: {manifest['sample_size']} | Requests: {manifest['request_count']}")
+        console.print(f"Inspect: {pilot_dir / 'rendered_prompts.jsonl'}")
+        console.print(f"Run with: kllm-batch pilot run {pilot_dir}")
+    except Exception as exc:
+        _fail(exc)
+
+
+@pilot_app.command("run")
+def pilot_run_command(
+    pilot: Path = typer.Argument(..., help="Pilot directory printed by 'pilot generate'."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the API-backed pilot non-interactively."),
+    rerun: bool = typer.Option(False, help="Intentionally execute an already-run pilot again; may incur duplicate cost."),
+):
+    """Execute the exact provider requests saved by `pilot generate`.
+
+    Example: `kllm-batch pilot run PILOT_DIR`. This requires the selected
+    provider's API key and incurs cost. Review the generated artifacts first.
+    A completed pilot cannot run again unless --rerun is explicitly supplied.
+    """
+    try:
+        pilot_dir = resolve_pilot(pilot)
+        manifest = json.loads((pilot_dir / "manifest.json").read_text(encoding="utf-8"))
+        estimate = manifest["pilot_cost_estimate"].get("estimated_usd")
+        cost_text = "unknown" if estimate is None else f"${estimate:.4f}"
+        console.print(f"Pilot: {manifest['sample_size']} records in {manifest['request_count']} request(s); estimated maximum {cost_text}.")
+        if not yes and not typer.confirm("Run these exact saved API requests?"):
             raise typer.Abort()
-        _print_json(pilot_project(config_object, provider))
+        _print_json(run_pilot(pilot_dir, rerun=rerun))
     except typer.Abort:
         console.print("Pilot cancelled.")
         raise typer.Exit()

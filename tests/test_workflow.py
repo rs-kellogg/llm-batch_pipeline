@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 import kellogg_llm_batch.core as core
-from kellogg_llm_batch.core import audit_run, compare_runs, pilot_project, prepare_retry, prepare_run, submit_run, sync_run
+from kellogg_llm_batch.core import audit_run, compare_runs, generate_pilot, pilot_project, prepare_retry, prepare_run, run_pilot, submit_run, sync_run
 from kellogg_llm_batch.state import load_state, save_state
 
 from conftest import FakeAdapter
@@ -76,6 +76,34 @@ def test_pilot_validates_sample_output(example_config, tmp_path, monkeypatch):
     assert report["sample_records"] == 4
     assert report["valid_records"] == 4
     assert report["actual_pilot_usage"]["input_tokens"] > 0
+
+
+def test_pilot_generate_then_run_exact_saved_requests(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    config = _temporary_config(example_config, tmp_path)
+    pilot = generate_pilot(config, "openai")
+
+    assert not (pilot / "results.json").exists()
+    assert (pilot / "sampled_source.csv").exists()
+    model_records = [json.loads(line) for line in (pilot / "sampled_records.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(model_records) == 4
+    assert set(model_records[0]) == {"record_id", "title", "text"}
+    rendered = [json.loads(line) for line in (pilot / "rendered_prompts.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert '"record_id"' in rendered[0]["user_prompt"]
+    assert '"title"' in rendered[0]["user_prompt"]
+    assert "investigator" not in rendered[0]["user_prompt"]
+
+    report = run_pilot(pilot, fake)
+    assert report["valid"] is True
+    assert report["sample_records"] == 4
+    assert (pilot / "predictions.parquet").exists()
+    with pytest.raises(ValueError, match="already has results"):
+        run_pilot(pilot, fake)
+    requests_path = pilot / "provider_requests.jsonl"
+    requests_path.write_text(requests_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="artifact changed"):
+        run_pilot(pilot, fake, rerun=True)
 
 
 class IncompleteAdapter(FakeAdapter):

@@ -594,16 +594,99 @@ def _cohens_kappa(a: pd.Series, b: pd.Series) -> float | None:
     return None if math.isclose(expected, 1.0) else (observed - expected) / (1 - expected)
 
 
-def pilot_project(config_or_path: ProjectConfig | str | Path, provider: str, adapter: ProviderAdapter | None = None) -> dict[str, Any]:
+def generate_pilot(config_or_path: ProjectConfig | str | Path, provider: str) -> Path:
+    """Create inspectable pilot inputs and exact provider payloads without an API call."""
     config = config_or_path if isinstance(config_or_path, ProjectConfig) else load_config(config_or_path)
-    validate_project(config)
-    records, canonical, payloads, source, _ = _build_requests(config, provider)
+    validation = validate_project(config)
+    if provider not in config.providers:
+        raise ValueError(f"Provider '{provider}' is not configured")
+    source_frame, source, _ = load_source(config)
+    records = canonicalize(config, source_frame, source)
     sample_n = min(config.pilot.sample_size, len(records))
     sampled_ids = set(pd.Series([r.record_id for r in records]).sample(n=sample_n, random_state=config.pilot.random_seed).tolist())
-    _, sample_requests, sample_payloads, _, _ = _build_requests(config, provider, sampled_ids)
-    adapter = adapter or get_provider(provider)
-    normalized = [adapter.run_sync(payload) for payload in sample_payloads]
-    schema = wrapped_schema(load_row_schema(config))
+    sampled_records, sample_requests, sample_payloads, _, schema = _build_requests(config, provider, sampled_ids)
+    sample_estimate = estimate_cost(config, provider, [request.system_prompt + "\n" + request.user_prompt for request in sample_requests])
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    pilot_id = f"{timestamp}_{provider}_{uuid.uuid4().hex[:8]}"
+    pilots_root = config.base_dir / "pilots"
+    final_dir = pilots_root / pilot_id
+    building_dir = pilots_root / f".{pilot_id}.building"
+    building_dir.mkdir(parents=True)
+
+    model_records = [{"record_id": record.record_id, **record.sent} for record in sampled_records]
+    with (building_dir / "sampled_records.jsonl").open("w", encoding="utf-8") as handle:
+        for record in model_records:
+            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    sampled_source = source_frame.iloc[[record.source_row for record in sampled_records]].copy()
+    sampled_source.insert(0, "_kllm_record_id", [record.record_id for record in sampled_records])
+    sampled_source.insert(1, "_kllm_source_row", [record.source_row for record in sampled_records])
+    sampled_source.to_parquet(building_dir / "sampled_source.parquet", index=False)
+    sampled_source.to_csv(building_dir / "sampled_source.csv", index=False)
+    with (building_dir / "rendered_prompts.jsonl").open("w", encoding="utf-8") as handle:
+        for request in sample_requests:
+            handle.write(json.dumps(request.model_dump(), ensure_ascii=False) + "\n")
+    (building_dir / "provider_requests.jsonl").write_bytes(b"".join(_json_line(payload) for payload in sample_payloads))
+    (building_dir / "schema.json").write_text(json.dumps(schema, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    files = {
+        "model_records": "sampled_records.jsonl",
+        "sampled_source_parquet": "sampled_source.parquet",
+        "sampled_source_csv": "sampled_source.csv",
+        "rendered_prompts": "rendered_prompts.jsonl",
+        "provider_requests": "provider_requests.jsonl",
+        "schema": "schema.json",
+    }
+    manifest = {
+        "pilot_id": pilot_id,
+        "status": "generated",
+        "created_at": utc_now(),
+        "project": config.project.name,
+        "provider": provider,
+        "model": config.providers[provider].model,
+        "config_path": str(config.config_path),
+        "config_sha256": sha256_file(config.config_path),
+        "source_path": str(source),
+        "source_sha256": sha256_file(source),
+        "prompt_version": config.prompt.version,
+        "sample_size": sample_n,
+        "sample_record_ids": [record.record_id for record in sampled_records],
+        "random_seed": config.pilot.random_seed,
+        "rows_per_request": config.task.rows_per_request,
+        "request_count": len(sample_requests),
+        "gold_columns": config.pilot.gold_columns,
+        "full_run_cost_estimate": validation["cost_estimates"][provider],
+        "pilot_cost_estimate": sample_estimate.model_dump(),
+        "files": files,
+        "artifact_sha256": {name: sha256_file(building_dir / filename) for name, filename in files.items()},
+    }
+    atomic_write_json(building_dir / "manifest.json", manifest)
+    os.replace(building_dir, final_dir)
+    return final_dir
+
+
+def resolve_pilot(pilot: str | Path) -> Path:
+    candidate = Path(pilot).expanduser()
+    if candidate.is_dir() and (candidate / "manifest.json").exists():
+        return candidate.resolve()
+    raise FileNotFoundError(f"Pilot not found: {pilot}. Pass the directory printed by 'pilot generate'.")
+
+
+def run_pilot(pilot: str | Path, adapter: ProviderAdapter | None = None, *, rerun: bool = False) -> dict[str, Any]:
+    """Execute the exact payloads saved by :func:`generate_pilot`."""
+    pilot_dir = resolve_pilot(pilot)
+    manifest = json.loads((pilot_dir / "manifest.json").read_text(encoding="utf-8"))
+    report_path = pilot_dir / "results.json"
+    if report_path.exists() and not rerun:
+        raise ValueError("This pilot already has results. Pass rerun=True only to intentionally incur another API run.")
+    for name, expected_hash in manifest["artifact_sha256"].items():
+        artifact = pilot_dir / manifest["files"][name]
+        if sha256_file(artifact) != expected_hash:
+            raise ValueError(f"Generated pilot artifact changed after review: {artifact}. Update the project source and run 'pilot generate' again.")
+    adapter = adapter or get_provider(manifest["provider"])
+    payloads = ProviderAdapter.read_jsonl(pilot_dir / manifest["files"]["provider_requests"])
+    sample_requests = [CanonicalRequest.model_validate(item) for item in ProviderAdapter.read_jsonl(pilot_dir / manifest["files"]["rendered_prompts"])]
+    normalized = [adapter.run_sync(payload) for payload in payloads]
+    schema = json.loads((pilot_dir / manifest["files"]["schema"]).read_text(encoding="utf-8"))
     validator = Draft202012Validator(schema)
     predictions: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
@@ -629,33 +712,38 @@ def pilot_project(config_or_path: ProjectConfig | str | Path, provider: str, ada
             continue
         predictions.extend(items)
     metrics: dict[str, Any] = {}
-    if config.pilot.gold_columns and predictions:
-        source_frame, _, _ = load_source(config)
-        canonical_all = canonicalize(config, source_frame, source)
-        source_by_id = {record.record_id: source_frame.iloc[record.source_row] for record in canonical_all}
-        for output_field, source_column in config.pilot.gold_columns.items():
-            if source_column not in source_frame.columns:
+    if manifest["gold_columns"] and predictions:
+        sampled_source = pd.read_parquet(pilot_dir / manifest["files"]["sampled_source_parquet"])
+        source_by_id = {str(row["_kllm_record_id"]): row for _, row in sampled_source.iterrows()}
+        for output_field, source_column in manifest["gold_columns"].items():
+            if source_column not in sampled_source.columns:
                 raise ValueError(f"Pilot gold column not found: {source_column}")
             pairs = [(str(source_by_id[str(item["record_id"])][source_column]), str(item.get(output_field))) for item in predictions if str(item["record_id"]) in source_by_id]
             metrics[output_field] = {"n": len(pairs), "accuracy": sum(gold == predicted for gold, predicted in pairs) / len(pairs) if pairs else None}
-    full_estimate = validate_project(config)["cost_estimates"][provider]
     report = {
-        "provider": provider,
-        "model": config.providers[provider].model,
-        "sample_records": sample_n,
+        "pilot_id": manifest["pilot_id"],
+        "pilot_dir": str(pilot_dir),
+        "provider": manifest["provider"],
+        "model": manifest["model"],
+        "sample_records": manifest["sample_size"],
         "valid_records": len(predictions),
         "request_count": len(sample_requests),
-        "valid": not findings and len(predictions) == sample_n,
+        "valid": not findings and len(predictions) == manifest["sample_size"],
         "findings": findings,
         "metrics": metrics,
-        "projected_full_run_cost": full_estimate,
+        "projected_full_run_cost": manifest["full_run_cost_estimate"],
+        "projected_pilot_cost": manifest["pilot_cost_estimate"],
         "actual_pilot_usage": {"input_tokens": sum(item.input_tokens for item in normalized), "output_tokens": sum(item.output_tokens for item in normalized)},
-        "source_sha256": sha256_file(source),
+        "source_sha256": manifest["source_sha256"],
         "generated_at": utc_now(),
     }
-    pilots = config.base_dir / "pilots"
-    pilots.mkdir(exist_ok=True)
-    path = pilots / f"pilot_{provider}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
-    atomic_write_json(path, report)
-    report["report_path"] = str(path)
+    pd.DataFrame(predictions).to_parquet(pilot_dir / "predictions.parquet", index=False)
+    pd.DataFrame(predictions).to_csv(pilot_dir / "predictions.csv", index=False)
+    atomic_write_json(report_path, report)
+    report["report_path"] = str(report_path)
     return report
+
+
+def pilot_project(config_or_path: ProjectConfig | str | Path, provider: str, adapter: ProviderAdapter | None = None) -> dict[str, Any]:
+    """Compatibility helper that generates and immediately runs a pilot."""
+    return run_pilot(generate_pilot(config_or_path, provider), adapter)

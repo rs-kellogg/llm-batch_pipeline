@@ -254,9 +254,12 @@ python -m pip install -e .
 
 kllm-batch validate -c examples/grant_coding/project.yaml
 
-kllm-batch pilot \
+kllm-batch pilot generate \
   -c examples/grant_coding/project.yaml \
   --provider openai
+
+# Inspect the generated records, rendered prompts, and exact provider payload.
+kllm-batch pilot run PILOT_DIR
 
 kllm-batch prepare \
   -c examples/grant_coding/project.yaml \
@@ -313,7 +316,8 @@ Write state through a same-directory temporary file followed by atomic replaceme
 
 - `kllm-batch init DIRECTORY` — scaffold an annotated project and runnable example structure.
 - `kllm-batch validate -c project.yaml [--report PATH]` — run local configuration, duplicate, input, schema, size, and cost checks.
-- `kllm-batch pilot -c project.yaml` — run a deterministic sample through candidate models and report validity, metrics, and projected cost.
+- `kllm-batch pilot generate -c project.yaml --provider PROVIDER` — locally build a deterministic sample, rendered prompts, schema, and exact provider payloads for inspection.
+- `kllm-batch pilot run PILOT_DIR` — run the exact reviewed payloads and report validity, metrics, and projected cost.
 - `kllm-batch prepare -c project.yaml --provider openai|anthropic` — rerun validation and create an immutable prepared run.
 - `kllm-batch submit RUN_ID` — submit prepared segments after cost confirmation; `--yes` supports automation.
 - `kllm-batch status RUN_ID` — show cached and current remote status.

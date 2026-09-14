@@ -10,8 +10,8 @@ repository; this shorter file is its implementation index.
 - Support OpenAI Batch and Anthropic Message Batches through provider adapters.
 - Keep source data immutable and state inspectable in atomic JSON plus JSONL or
   Parquet row artifacts; do not introduce SQLite in v1.
-- Provide validate, pilot, prepare, submit, status, sync, cancel, audit, retry,
-  merge, and cross-provider compare commands.
+- Provide validate, two-phase pilot generate/run, prepare, submit, status, sync,
+  cancel, audit, retry, merge, and cross-provider compare commands.
 - Record source, prompt, schema, model, environment, cost, and row provenance.
 
 ## Input contract and blocking checks

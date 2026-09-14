@@ -24,9 +24,11 @@ pilot:
     primary_label: human_primary_label
 ```
 
-`pilot` reports exact-match accuracy for configured fields. The pilot-and-
-impute workflow is deliberately not automatic: inspect class balance, errors,
-and schema validity before selecting a model.
+Run `pilot generate` first and inspect its saved records and rendered prompts;
+then use `pilot run PILOT_DIR`. The run reports exact-match accuracy for
+configured fields. The pilot-and-impute workflow is deliberately not
+automatic: inspect class balance, errors, and schema validity before selecting
+a model.
 
 ## Configurable multi-row requests
 
