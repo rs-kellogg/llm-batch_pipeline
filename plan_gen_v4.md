@@ -48,8 +48,8 @@ input:
   csv_encoding: utf-8
 
   fields_sent:
-    title: project_title
-    text: abstract
+    project_title: project_title
+    abstract: abstract
 
   columns_preserved:
     - year
@@ -57,11 +57,11 @@ input:
     - source_file
 
   required_fields:
-    - text
+    - abstract
   missing_required: error
 
   field_limits:
-    text:
+    abstract:
       overflow: error
       # Explicit opt-in:
       # max_characters: 30000

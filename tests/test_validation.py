@@ -102,7 +102,8 @@ def test_report_is_written_for_structural_validation_error(example_config, tmp_p
     raw = yaml.safe_load(example_config.read_text())
     _absolute_support_paths(raw, example_config)
     raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
-    raw["input"]["fields_sent"]["text"] = "column_that_does_not_exist"
+    logical_name = next(iter(raw["input"]["fields_sent"]))
+    raw["input"]["fields_sent"][logical_name] = "column_that_does_not_exist"
     config = tmp_path / "project.yaml"
     report = tmp_path / "validation.json"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
@@ -111,3 +112,22 @@ def test_report_is_written_for_structural_validation_error(example_config, tmp_p
     payload = json.loads(report.read_text(encoding="utf-8"))
     assert payload["valid"] is False
     assert payload["findings"][0]["code"] == "validation_error"
+
+
+def test_fields_sent_accepts_arbitrary_names_and_multiple_mappings(example_config, tmp_path):
+    raw = yaml.safe_load(example_config.read_text())
+    _absolute_support_paths(raw, example_config)
+    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["input"]["fields_sent"] = {
+        "research_heading": "project_title",
+        "document_body": "abstract",
+        "award_year_seen_by_model": "year",
+    }
+    raw["input"]["required_fields"] = ["document_body"]
+    raw["input"]["field_limits"] = {}
+    config = tmp_path / "arbitrary-fields.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    report = validate_project(config)
+    assert report["valid"] is True
+    assert report["canonical_rows"] == 10

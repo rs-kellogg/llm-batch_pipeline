@@ -35,23 +35,28 @@ Do not put credentials in YAML, prompt files, shell history shared with others, 
 
 ### How `input` becomes `${records_json}`
 
-The keys on the left side of `fields_sent` are the names the model sees; the
-values on the right are columns in `data/grants.csv`:
+The keys on the left side of `fields_sent` are user-chosen names the model
+sees; there can be any number of them. The values on the right are columns in
+`data/grants.csv`:
 
 ```yaml
 id_column: grant_id
 fields_sent:
-  title: project_title
-  text: abstract
+  project_title: project_title
+  abstract: abstract
 ```
+
+Because `required_fields` also uses model-facing names, `- abstract` means an
+empty source `abstract` is a blocking validation error. `project_title` is
+still sent; it is simply allowed to be empty in this example.
 
 For example, the first CSV row is converted to this model-facing record:
 
 ```json
 {
   "record_id": "GRANT-001",
-  "title": "Team learning after product failures",
-  "text": "Studies how teams update routines and coordinate work after unsuccessful product launches."
+  "project_title": "Team learning after product failures",
+  "abstract": "Studies how teams update routines and coordinate work after unsuccessful product launches."
 }
 ```
 

@@ -12,17 +12,17 @@ input:
   id_column: grant_id
   csv_encoding: utf-8
   fields_sent:
-    title: project_title
-    text: abstract
+    project_title: project_title
+    abstract: abstract
   columns_preserved:
     - year
     - investigator
     - source_file
   required_fields:
-    - text
+    - abstract
   missing_required: error
   field_limits:
-    text:
+    abstract:
       overflow: error
 
 task:

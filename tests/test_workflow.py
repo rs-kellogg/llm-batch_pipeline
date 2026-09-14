@@ -82,16 +82,27 @@ def test_pilot_generate_then_run_exact_saved_requests(example_config, tmp_path, 
     fake = FakeAdapter()
     monkeypatch.setattr(core, "get_provider", lambda name: fake)
     config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["input"]["fields_sent"] = {
+        "research_heading": "project_title",
+        "document_body": "abstract",
+        "award_year_seen_by_model": "year",
+    }
+    raw["input"]["required_fields"] = ["document_body"]
+    raw["input"]["field_limits"] = {}
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
     pilot = generate_pilot(config, "openai")
 
     assert not (pilot / "results.json").exists()
     assert (pilot / "sampled_source.csv").exists()
     model_records = [json.loads(line) for line in (pilot / "sampled_records.jsonl").read_text(encoding="utf-8").splitlines()]
     assert len(model_records) == 4
-    assert set(model_records[0]) == {"record_id", "title", "text"}
+    expected_model_fields = {"record_id", *raw["input"]["fields_sent"]}
+    assert set(model_records[0]) == expected_model_fields
     rendered = [json.loads(line) for line in (pilot / "rendered_prompts.jsonl").read_text(encoding="utf-8").splitlines()]
     assert '"record_id"' in rendered[0]["user_prompt"]
-    assert '"title"' in rendered[0]["user_prompt"]
+    for logical_name in raw["input"]["fields_sent"]:
+        assert f'"{logical_name}"' in rendered[0]["user_prompt"]
     assert "investigator" not in rendered[0]["user_prompt"]
 
     report = run_pilot(pilot, fake)
