@@ -88,6 +88,13 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     assert set(results["validation_status"]) == {"valid"}
     assert results["_kllm_source_row_sha256"].notna().all()
     assert audit_run(run)["complete"] is True
+    assert {path.name for path in (run / "run_reports").iterdir()} == {
+        "audit.json",
+        "run_summary.json",
+        "usage.json",
+    }
+    assert not (run / "run_reports" / "audit.md").exists()
+    assert not (run / "run_reports" / "run_summary.md").exists()
     assert load_state(run)["stage"] == "audited"
 
 

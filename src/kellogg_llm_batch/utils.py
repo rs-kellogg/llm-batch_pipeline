@@ -44,15 +44,14 @@ def dump_json(path: Path, value: Any, *, indent: int = 2) -> None:
 def atomic_write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    previous = path.with_name("state.previous.json") if path.name == "state.json" else path.with_name(path.name + ".previous")
     tmp.write_text(
         json.dumps(value, ensure_ascii=False, indent=2, default=json_default) + "\n",
         encoding="utf-8",
     )
     with tmp.open("r+") as handle:
         os.fsync(handle.fileno())
-    if path.exists():
-        shutil.copy2(path, previous)
+    if path.exists() and path.name == "state.json":
+        shutil.copy2(path, path.with_name("state.previous.json"))
     os.replace(tmp, path)
 
 

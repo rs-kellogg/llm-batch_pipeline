@@ -689,7 +689,6 @@ def _write_run_summary(run_dir: Path, audit: dict[str, Any]) -> None:
     evaluation_metrics = _evaluation_metrics(run_dir, manifest)
     summary = {"run_id": manifest["run_id"], "generated_at": utc_now(), "project": manifest["project"], "purpose": manifest.get("purpose", "production"), "execution": manifest.get("execution", "batch"), "selection": manifest.get("selection", {"method": "all"}), "provider": manifest["provider"], "model_requested": manifest["model_requested"], "source_path": manifest["source_path"], "source_sha256": manifest["source_sha256"], "prompt_version": manifest["prompt_version"], "expected_records": audit["expected_records"], "valid_records": audit["valid_records"], "missing_records": len(audit["missing_record_ids"]), "input_tokens": usage["input_tokens"], "output_tokens": usage["output_tokens"], "estimated_maximum_usd": cost["estimated_usd"], "actual_usage_cost_usd": actual_usd, "pricing_as_of": cost.get("pricing_as_of"), "evaluation_metrics": evaluation_metrics, "results_parquet": str(run_dir / "outputs" / "results.parquet"), "results_csv": str(run_dir / "outputs" / "results.csv"), "failures_jsonl": str(run_dir / "outputs" / "failures.jsonl") if (run_dir / "outputs" / "failures.jsonl").exists() else None}
     atomic_write_json(run_dir / "run_reports" / "run_summary.json", summary)
-    (run_dir / "run_reports" / "run_summary.md").write_text("# Run summary\n\n" + "\n".join(f"- **{key}**: {value}" for key, value in summary.items()) + "\n", encoding="utf-8")
 
 
 def _evaluation_metrics(run_dir: Path, manifest: dict[str, Any]) -> dict[str, Any]:
@@ -731,10 +730,6 @@ def audit_run(run: str | Path) -> dict[str, Any]:
         "complete": expected == actual and len(actual_list) == len(actual),
     }
     atomic_write_json(run_dir / "run_reports" / "audit.json", report)
-    (run_dir / "run_reports" / "audit.md").write_text(
-        f"# Audit: {report['run_id']}\n\nExpected: {len(expected)}  \nValid: {len(actual)}  \nMissing: {len(report['missing_record_ids'])}  \nUnexpected: {len(report['unexpected_record_ids'])}  \nComplete: {report['complete']}\n",
-        encoding="utf-8",
-    )
     with RunLock(run_dir):
         state = load_state(run_dir)
         state["stage"] = "audited"

@@ -311,7 +311,7 @@ Each run directory contains:
 - `project_snapshot/`: the project configuration, schema, prompt templates, and context used for the run.
 - `raw_responses/`: immutable provider responses and errors, created when responses are retrieved.
 - `outputs/`: normalized CSV and Parquet results plus conditional failure JSONL, created during processing.
-- `run_reports/`: cost, audit, and comparison reports, created during processing.
+- `run_reports/`: JSON-only audit, run-summary, and usage reports, created during processing.
 
 Do not duplicate the canonical input as CSV or write separate model-record or
 rendered-prompt files: the provider requests already contain the fully rendered

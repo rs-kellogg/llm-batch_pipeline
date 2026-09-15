@@ -233,7 +233,9 @@ for type-stable analysis. An `outputs/failures.jsonl` file is created only when
 failures occur. Essential
 row provenance is stored directly in these result and failure rows; shared
 prompt, schema, configuration, and environment provenance remains in
-`manifest.json`. See `expected/result_columns.md` for normalized columns.
+`manifest.json`. The `run_reports/` directory contains only JSON reports:
+`audit.json`, `run_summary.json`, and `usage.json`. See
+`expected/result_columns.md` for normalized columns.
 
 ## 12. Cost boundary
 
