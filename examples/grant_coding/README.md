@@ -130,15 +130,20 @@ This command makes no API call. It prints a `RUN_ID` under
 records `purpose: pilot` and defaults to `execution: sync`. Inspect these files
 before approving model usage:
 
-- `requests/model_records.jsonl`: exactly the records substituted into
-  `${records_json}`.
-- `requests/canonical_input.csv` and `.parquet`: the selected source rows,
-  including local preserved fields.
+- `REVIEW.md`: the starting point, with the selection, provider, model,
+  execution mode, request count, estimated cost, and next command.
 - `requests/rendered_prompts.jsonl`: readable system and fully rendered user
-  prompts for every request.
+  prompts for every request, including exactly the records substituted into
+  `${records_json}`.
 - `requests/segment_*.jsonl`: the exact provider-native payloads that will run.
 - `snapshot/schema.json` and `manifest.json`: the enforced response contract,
   hashes, deterministic seed, selected IDs, execution mode, and cost estimate.
+
+The package also retains `internal/canonical_input.parquet` for preserved-column
+joins, retries, and audits, plus `internal/request_map.jsonl` for matching API
+requests back to record IDs. Researchers normally do not need to inspect these
+two files. The redundant canonical CSV and separate model-record JSONL are not
+created.
 
 After reviewing those artifacts, run those exact saved requests:
 
@@ -210,7 +215,11 @@ The comparison reports agreement on categorical and string fields and exports di
 
 ## 11. Outputs
 
-Each run contains `snapshot/`, `requests/`, `mappings/`, `raw/`, `results/`, and `reports/`. Raw provider responses and earlier attempts are never patched or deleted. See `expected/result_columns.md` for normalized columns.
+Immediately after `prepare`, a run contains `REVIEW.md`, `manifest.json`,
+`state.json`, `requests/`, `internal/`, and `snapshot/`. The `raw/` directory is
+created when provider responses are retrieved; `results/` and `reports/` are
+created when processing begins. Raw responses and earlier attempts are never
+patched or deleted. See `expected/result_columns.md` for normalized columns.
 
 ## 12. Cost boundary
 

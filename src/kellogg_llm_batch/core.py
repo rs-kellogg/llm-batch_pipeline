@@ -4,6 +4,7 @@ import json
 import math
 import os
 import platform
+import shlex
 import shutil
 import time
 import uuid
@@ -35,6 +36,13 @@ def _json_line(obj: dict[str, Any]) -> bytes:
 
 def _manifest(run_dir: Path) -> dict[str, Any]:
     return json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+
+
+def _canonical_input_path(run_dir: Path) -> Path:
+    """Locate canonical input in current runs and runs made before v0.1."""
+    current = run_dir / "internal" / "canonical_input.parquet"
+    legacy = run_dir / "requests" / "canonical_input.parquet"
+    return current if current.exists() else legacy
 
 
 def _build_requests(config: ProjectConfig, provider_name: str, selected_ids: set[str] | None = None):
@@ -168,7 +176,7 @@ def prepare_run(
     runs_root = config.resolve(config.output.runs_directory)
     final_run_dir = runs_root / run_id
     run_dir = runs_root / f".{run_id}.building"
-    for name in ("requests", "mappings", "raw", "results", "reports", "snapshot"):
+    for name in ("requests", "internal", "snapshot"):
         (run_dir / name).mkdir(parents=True, exist_ok=False if name == "requests" else True)
 
     canonical_rows = []
@@ -182,12 +190,7 @@ def prepare_run(
         )
         canonical_rows.append({"record_id": record.record_id, "source_row": record.source_row, **record.sent, **record.preserved, "_kllm_source_row_sha256": source_row_sha256, "_kllm_truncated_fields": json.dumps(record.truncated_fields, sort_keys=True)})
     canonical_df = pd.DataFrame(canonical_rows)
-    canonical_df.to_parquet(run_dir / "requests" / "canonical_input.parquet", index=False)
-    if config.output.write_csv:
-        canonical_df.to_csv(run_dir / "requests" / "canonical_input.csv", index=False)
-    with (run_dir / "requests" / "model_records.jsonl").open("w", encoding="utf-8") as handle:
-        for record in records:
-            handle.write(json.dumps({"record_id": record.record_id, **record.sent}, ensure_ascii=False, sort_keys=True) + "\n")
+    canonical_df.to_parquet(run_dir / "internal" / "canonical_input.parquet", index=False)
     with (run_dir / "requests" / "rendered_prompts.jsonl").open("w", encoding="utf-8") as handle:
         for request in canonical:
             handle.write(json.dumps(request.model_dump(), ensure_ascii=False) + "\n")
@@ -200,20 +203,22 @@ def prepare_run(
             row = {"record_id": record.record_id}
             row.update({output_field: source_frame.iloc[record.source_row][source_column] for output_field, source_column in config.evaluation.gold_columns.items()})
             gold_rows.append(row)
-        gold_labels_path = run_dir / "requests" / "gold_labels.parquet"
+        gold_labels_path = run_dir / "internal" / "gold_labels.parquet"
         pd.DataFrame(gold_rows).to_parquet(gold_labels_path, index=False)
 
     canonical_by_id = {item.custom_id: item for item in canonical}
     state_segments = []
+    mapping_rows: list[dict[str, Any]] = []
     for index, segment in enumerate(segments):
         request_path = run_dir / "requests" / f"segment_{index:04d}.jsonl"
-        mapping_path = run_dir / "mappings" / f"segment_{index:04d}.jsonl"
         request_path.write_bytes(b"".join(_json_line(item) for item in segment))
-        with mapping_path.open("w", encoding="utf-8") as handle:
-            for item in segment:
-                request = canonical_by_id[item["custom_id"]]
-                handle.write(json.dumps({"custom_id": request.custom_id, "record_ids": request.record_ids}) + "\n")
-        state_segments.append({"index": index, "request_file": str(request_path.relative_to(run_dir)), "mapping_file": str(mapping_path.relative_to(run_dir)), "status": "prepared", "remote_batch_id": None, "input_file_id": None, "provider_status": None, "error": None})
+        for item in segment:
+            request = canonical_by_id[item["custom_id"]]
+            mapping_rows.append({"segment_index": index, "custom_id": request.custom_id, "record_ids": request.record_ids})
+        state_segments.append({"index": index, "request_file": str(request_path.relative_to(run_dir)), "mapping_file": "internal/request_map.jsonl", "status": "prepared", "remote_batch_id": None, "input_file_id": None, "provider_status": None, "error": None})
+    with (run_dir / "internal" / "request_map.jsonl").open("w", encoding="utf-8") as handle:
+        for item in mapping_rows:
+            handle.write(json.dumps(item, ensure_ascii=False) + "\n")
 
     system_prompt, user_template = load_prompt_files(config)
     shutil.copy2(config.resolve(config.prompt.system_file), run_dir / "snapshot" / "system.txt")
@@ -228,9 +233,10 @@ def prepare_run(
         destination = run_dir / "snapshot" / "context" / f"{name}{source_context.suffix}"
         shutil.copy2(source_context, destination)
         context_manifest[name] = {"source_path": str(source_context), "snapshot_path": str(destination.relative_to(run_dir)), "sha256": sha256_file(source_context)}
-    request_artifacts = {
+    prepared_artifacts = {
         str(path.relative_to(run_dir)): sha256_file(path)
-        for path in sorted((run_dir / "requests").glob("*"))
+        for directory in (run_dir / "requests", run_dir / "internal", run_dir / "snapshot")
+        for path in sorted(directory.rglob("*"))
         if path.is_file()
     }
     manifest = {
@@ -266,9 +272,10 @@ def prepare_run(
         "cost_estimate": estimate.model_dump(),
         "output_options": config.output.model_dump(mode="json"),
         "context": context_manifest,
-        "request_artifact_sha256": request_artifacts,
+        "prepared_artifact_sha256": prepared_artifacts,
     }
     atomic_write_json(run_dir / "manifest.json", manifest)
+    _write_review(run_dir, final_run_dir, manifest, records)
     save_state(run_dir, {"run_id": run_id, "stage": "prepared", "status": "prepared", "created_at": manifest["created_at"], "segments": state_segments})
     os.replace(run_dir, final_run_dir)
     return final_run_dir
@@ -290,17 +297,52 @@ def _package_versions() -> dict[str, str | None]:
     return versions
 
 
-def _verify_request_artifacts(run_dir: Path, manifest: dict[str, Any]) -> None:
-    for relative_path, expected_hash in manifest.get("request_artifact_sha256", {}).items():
+def _write_review(run_dir: Path, final_run_dir: Path, manifest: dict[str, Any], records: list[Any]) -> None:
+    estimate = manifest["cost_estimate"]["estimated_usd"]
+    selection = manifest["selection"]
+    lines = [
+        "# Review before submission",
+        "",
+        f"- Project: {manifest['project']}",
+        f"- Purpose: {manifest['purpose']}",
+        f"- Selection: {selection['method']}",
+        f"- Records: {manifest['selected_rows']:,} of {manifest['source_total_rows']:,}",
+        f"- Requests: {manifest['request_count']:,} across {manifest['segment_count']:,} segment(s)",
+        f"- Provider/model: {manifest['provider']} / {manifest['model_requested']}",
+        f"- Execution: {manifest['execution']}",
+        f"- Estimated maximum cost: ${estimate:.4f}",
+        "",
+        "## What to inspect",
+        "",
+        "1. `requests/rendered_prompts.jsonl` contains the readable system and fully rendered user prompt for every request.",
+        "2. `requests/segment_*.jsonl` contains the exact provider-native payloads that will be executed.",
+        "3. `manifest.json` records selection, hashes, model, pricing, and environment provenance.",
+        "",
+        "Files under `internal/` and `snapshot/` support joins, retries, validation, and reproducibility; they normally do not need manual review.",
+    ]
+    if manifest["purpose"] == "pilot":
+        record_ids = [record.record_id for record in records]
+        preview = record_ids[:20]
+        lines.extend(["", "## Selected record IDs", "", *[f"- `{record_id}`" for record_id in preview]])
+        if len(record_ids) > len(preview):
+            lines.append(f"- …and {len(record_ids) - len(preview):,} more; see `internal/canonical_input.parquet`.")
+    lines.extend(["", "## Submit after review", "", "```bash", f"kllm-batch submit {shlex.quote(str(final_run_dir))}", "```", ""])
+    (run_dir / "REVIEW.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def _verify_prepared_artifacts(run_dir: Path, manifest: dict[str, Any]) -> None:
+    artifacts = manifest.get("prepared_artifact_sha256") or manifest.get("request_artifact_sha256", {})
+    for relative_path, expected_hash in artifacts.items():
         path = run_dir / relative_path
         if not path.exists() or sha256_file(path) != expected_hash:
             raise ValueError(
-                f"Prepared request artifact changed after review: {path}. "
+                f"Prepared artifact changed after review: {path}. "
                 "Update the project inputs and run 'prepare' again."
             )
 
 
 def _execute_sync_requests(run_dir: Path, manifest: dict[str, Any], adapter: ProviderAdapter) -> dict:
+    (run_dir / "raw").mkdir(exist_ok=True)
     with RunLock(run_dir):
         state = load_state(run_dir)
         if state.get("status") in {"completed", "completed_with_failures"}:
@@ -344,7 +386,7 @@ def submit_run(run: str | Path, adapter: ProviderAdapter | None = None) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
     adapter = adapter or get_provider(manifest["provider"])
-    _verify_request_artifacts(run_dir, manifest)
+    _verify_prepared_artifacts(run_dir, manifest)
     if manifest.get("execution", "batch") == "sync":
         return _execute_sync_requests(run_dir, manifest, adapter)
     with RunLock(run_dir):
@@ -420,6 +462,7 @@ def sync_run(run: str | Path, *, watch: bool = False, poll_seconds: int = 60, ad
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
     adapter = adapter or get_provider(manifest["provider"])
+    (run_dir / "raw").mkdir(exist_ok=True)
     while True:
         state = status_run(run_dir, adapter)
         with RunLock(run_dir):
@@ -445,14 +488,17 @@ def sync_run(run: str | Path, *, watch: bool = False, poll_seconds: int = 60, ad
 
 
 def _process_downloads(run_dir: Path, adapter: ProviderAdapter) -> None:
+    manifest = _manifest(run_dir)
+    _verify_prepared_artifacts(run_dir, manifest)
     with RunLock(run_dir):
         state = load_state(run_dir)
         if not any(segment["status"] == "downloaded" for segment in state["segments"]):
             return
-        manifest = _manifest(run_dir)
+        (run_dir / "results").mkdir(exist_ok=True)
+        (run_dir / "reports").mkdir(exist_ok=True)
         row_schema = json.loads((run_dir / "snapshot" / "schema.json").read_text(encoding="utf-8"))
         validator = Draft202012Validator(row_schema)
-        canonical = pd.read_parquet(run_dir / "requests" / "canonical_input.parquet")
+        canonical = pd.read_parquet(_canonical_input_path(run_dir))
         canonical_by_id = {str(row["record_id"]): row.to_dict() for _, row in canonical.iterrows()}
         results: list[dict[str, Any]] = []
         failures: list[dict[str, Any]] = []
@@ -464,6 +510,8 @@ def _process_downloads(run_dir: Path, adapter: ProviderAdapter) -> None:
             mapping = {}
             for line in (run_dir / segment["mapping_file"]).read_text(encoding="utf-8").splitlines():
                 item = json.loads(line)
+                if "segment_index" in item and item["segment_index"] != segment["index"]:
+                    continue
                 mapping[item["custom_id"]] = item["record_ids"]
             output_path = run_dir / "raw" / f"segment_{segment['index']:04d}_output.jsonl"
             seen_requests: set[str] = set()
@@ -538,7 +586,7 @@ def _process_downloads(run_dir: Path, adapter: ProviderAdapter) -> None:
         batch_by_custom_id = {
             custom_id: segment["remote_batch_id"]
             for segment in state["segments"]
-            for custom_id in _mapping_custom_ids(run_dir / segment["mapping_file"])
+            for custom_id in _mapping_custom_ids(run_dir / segment["mapping_file"], segment["index"])
         }
         for record_id, categories in failure_categories.items():
             custom_id = failure_custom_ids[record_id]
@@ -564,8 +612,16 @@ def _failure(record_id: str, custom_id: str, category: str, message: str | None)
     return {"record_id": record_id, "custom_id": custom_id, "category": category, "message": message or ""}
 
 
-def _mapping_custom_ids(path: Path) -> list[str]:
-    return [json.loads(line)["custom_id"] for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+def _mapping_custom_ids(path: Path, segment_index: int | None = None) -> list[str]:
+    custom_ids = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        if segment_index is not None and "segment_index" in item and item["segment_index"] != segment_index:
+            continue
+        custom_ids.append(item["custom_id"])
+    return custom_ids
 
 
 def _row_provenance(
@@ -615,6 +671,7 @@ def _row_provenance(
 
 
 def _write_table_outputs(run_dir: Path, stem: str, rows: list[dict[str, Any]], output_options: dict[str, Any]) -> None:
+    (run_dir / "results").mkdir(exist_ok=True)
     default_columns = {
         "results": ["record_id", "source_row"],
         "failures": ["record_id", "custom_id", "category", "message"],
@@ -627,6 +684,7 @@ def _write_table_outputs(run_dir: Path, stem: str, rows: list[dict[str, Any]], o
 
 
 def _write_run_summary(run_dir: Path, audit: dict[str, Any]) -> None:
+    (run_dir / "reports").mkdir(exist_ok=True)
     manifest = _manifest(run_dir)
     usage_path = run_dir / "reports" / "usage.json"
     usage = json.loads(usage_path.read_text()) if usage_path.exists() else {"input_tokens": 0, "output_tokens": 0}
@@ -662,7 +720,8 @@ def _evaluation_metrics(run_dir: Path, manifest: dict[str, Any]) -> dict[str, An
 
 def audit_run(run: str | Path) -> dict[str, Any]:
     run_dir = resolve_run(run)
-    expected = set(pd.read_parquet(run_dir / "requests" / "canonical_input.parquet")["record_id"].astype(str))
+    (run_dir / "reports").mkdir(exist_ok=True)
+    expected = set(pd.read_parquet(_canonical_input_path(run_dir))["record_id"].astype(str))
     results_path = run_dir / "results" / "results.parquet"
     actual_list = pd.read_parquet(results_path)["record_id"].astype(str).tolist() if results_path.exists() else []
     counts = Counter(actual_list)

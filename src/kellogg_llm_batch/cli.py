@@ -91,8 +91,8 @@ def prepare_command(
 
     Full run: `kllm-batch prepare -c project.yaml --provider openai`.
     Pilot: add `--sample-size 20 --seed 42`; or use `--ids-file IDs.txt`.
-    Preparation is local and free. Inspect requests/model_records.jsonl,
-    requests/rendered_prompts.jsonl, and provider JSONL before submitting.
+    Preparation is local and free. Start with REVIEW.md, then inspect the
+    rendered prompts and exact provider JSONL before submitting.
     """
     try:
         run_dir = prepare_run(
@@ -108,7 +108,7 @@ def prepare_command(
         console.print(f"Purpose: {manifest['purpose']} | Selection: {manifest['selection']['method']} | Execution: {manifest['execution']}")
         console.print(f"Selected rows: {manifest['selected_rows']:,} of {manifest['source_total_rows']:,}")
         console.print(f"Estimated maximum cost: ${manifest['cost_estimate']['estimated_usd']:.4f}")
-        console.print(f"Inspect: {run_dir / 'requests' / 'rendered_prompts.jsonl'}")
+        console.print(f"Inspect: {run_dir / 'REVIEW.md'}")
         console.print(f"Submit with: kllm-batch submit {run_dir}")
     except Exception as exc:
         _fail(exc)

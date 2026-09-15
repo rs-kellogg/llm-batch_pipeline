@@ -46,7 +46,7 @@ Prepare a deterministic pilot for inspection before making an API call:
 ```bash
 kllm-batch prepare -c my-project/project.yaml --provider openai \
   --sample-size 20 --seed 42
-# Inspect requests/model_records.jsonl, rendered_prompts.jsonl, and segment_*.jsonl
+# Start with RUN_ID/REVIEW.md, then inspect the rendered prompts and API payloads
 kllm-batch submit RUN_ID
 ```
 

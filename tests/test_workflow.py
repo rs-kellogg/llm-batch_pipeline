@@ -37,6 +37,21 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     assert manifest["purpose"] == "production"
     assert manifest["execution"] == "batch"
     assert manifest["cost_estimate"]["execution"] == "batch"
+    assert {path.name for path in run.iterdir()} == {
+        "REVIEW.md",
+        "internal",
+        "manifest.json",
+        "requests",
+        "snapshot",
+        "state.json",
+    }
+    assert {path.name for path in (run / "internal").iterdir()} == {
+        "canonical_input.parquet",
+        "request_map.jsonl",
+    }
+    assert not (run / "requests" / "canonical_input.csv").exists()
+    assert not (run / "requests" / "model_records.jsonl").exists()
+    assert "What to inspect" in (run / "REVIEW.md").read_text(encoding="utf-8")
     assert len(list((run / "requests").glob("segment_*.jsonl"))) == 1
     submit_run(run, fake)
     submit_run(run, fake)
@@ -52,6 +67,25 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     assert provenance["rows"][0]["config_sha256"]
     assert provenance["rows"][0]["validation_status"] == "valid"
     assert load_state(run)["stage"] == "audited"
+
+
+def test_consolidated_request_map_supports_multiple_segments(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["providers"]["openai"]["max_requests_per_batch"] = 2
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    run = prepare_run(config, "openai")
+    assert len(list((run / "requests").glob("segment_*.jsonl"))) == 2
+    assert [path.name for path in (run / "internal").glob("*map*")] == ["request_map.jsonl"]
+    submit_run(run, fake)
+    sync_run(run, adapter=fake)
+
+    results = pd.read_parquet(run / "results" / "results.parquet")
+    assert len(results) == 10
+    assert results["record_id"].is_unique
 
 
 def test_compare_exports_disagreements(example_config, tmp_path, monkeypatch):
@@ -92,10 +126,6 @@ def test_prepare_sample_then_submit_sync_uses_exact_saved_requests(example_confi
     assert manifest["cost_estimate"]["execution"] == "sync"
     assert manifest["selection"] == {"method": "random", "selected_count": 4, "seed": 17}
     assert manifest["selected_rows"] == 4
-    model_records = [json.loads(line) for line in (run / "requests" / "model_records.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert len(model_records) == 4
-    expected_model_fields = {"record_id", *raw["input"]["fields_sent"]}
-    assert set(model_records[0]) == expected_model_fields
     rendered = [json.loads(line) for line in (run / "requests" / "rendered_prompts.jsonl").read_text(encoding="utf-8").splitlines()]
     assert '"record_id"' in rendered[0]["user_prompt"]
     for logical_name in raw["input"]["fields_sent"]:
@@ -121,7 +151,7 @@ def test_prepare_with_explicit_ids_and_request_integrity(example_config, tmp_pat
     manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["selection"]["method"] == "ids_file"
     assert manifest["execution"] == "sync"
-    selected = pd.read_parquet(run / "requests" / "canonical_input.parquet")
+    selected = pd.read_parquet(run / "internal" / "canonical_input.parquet")
     assert selected["record_id"].tolist() == ["GRANT-002", "GRANT-007"]
 
     prompts = run / "requests" / "rendered_prompts.jsonl"
@@ -199,7 +229,7 @@ def test_manual_retry_contains_only_failed_rows(example_config, tmp_path, monkey
     failures = pd.read_parquet(run / "results" / "failures.parquet")
     assert len(set(failures["record_id"])) == 1
     child = prepare_retry(run)
-    child_input = pd.read_parquet(child / "requests" / "canonical_input.parquet")
+    child_input = pd.read_parquet(child / "internal" / "canonical_input.parquet")
     assert len(child_input) == 1
     assert json.loads((child / "manifest.json").read_text())["parent_run"] == str(run)
 

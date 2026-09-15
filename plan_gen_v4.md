@@ -302,14 +302,19 @@ Terminal states are `completed`, `completed_with_failures`, `failed`, and `cance
 
 Each run directory contains:
 
+- `REVIEW.md`: concise researcher-facing selection, cost, inspection, and submission guide.
 - `manifest.json`: immutable configuration, source, prompt, schema, package version, and environment snapshot.
 - `state.json`: compact mutable segment/job state.
 - `state.previous.json`: last valid state for recovery.
-- `requests/`: canonical and provider-native JSONL requests.
-- `mappings/`: request-to-source-row JSONL maps.
-- `raw/`: immutable provider responses and errors.
-- `results/`: normalized Parquet and optional CSV results.
-- `reports/`: cost, audit, comparison, and provenance reports.
+- `requests/`: readable rendered prompts and exact provider-native JSONL requests.
+- `internal/`: one canonical Parquet input snapshot and one request-to-source-row JSONL map.
+- `snapshot/`: the project configuration, schema, prompt templates, and context used for the run.
+- `raw/`: immutable provider responses and errors, created when responses are retrieved.
+- `results/`: normalized Parquet and optional CSV results, created during processing.
+- `reports/`: cost, audit, comparison, and provenance reports, created during processing.
+
+Do not duplicate the canonical input as CSV or write a separate model-record
+file: the readable rendered prompts already contain the model-facing records.
 
 Write state through a same-directory temporary file followed by atomic replacement. Use a run lock to prevent simultaneous local mutation. Keep per-row state in JSONL or Parquet rather than the compact JSON state.
 
