@@ -58,6 +58,11 @@ A synchronous `submit` waits for responses, writes normalized results, and
 runs the audit automatically. A batch `submit` only starts the remote jobs;
 `sync` downloads completed responses and then performs the same processing and
 automatic audit. The separate `audit` command is available to rerun the check.
+For synchronous resumes, completed request IDs already checkpointed in
+`raw_responses/` are skipped. An interruption in the short interval after a
+provider finishes but before the response is saved locally can rerun that one
+request. Recorded API errors require `retry`, and a partial JSONL checkpoint
+stops resume with a safety warning rather than continuing blindly.
 
 One input row represents one research unit. `fields_sent` controls what providers receive; `columns_preserved` is carried to results locally. Duplicate IDs and exact duplicate model inputs are blocking errors.
 

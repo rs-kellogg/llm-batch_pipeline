@@ -332,6 +332,15 @@ def _write_review(run_dir: Path, manifest: dict[str, Any], records: list[Any]) -
         lines.extend(["", "## Selected record IDs", "", *[f"- `{record_id}`" for record_id in preview]])
         if len(record_ids) > len(preview):
             lines.append(f"- …and {len(record_ids) - len(preview):,} more; see `input_snapshot/canonical_input.parquet`.")
+    if manifest["execution"] == "sync":
+        lines.extend(
+            [
+                "",
+                "## Synchronous resume warning",
+                "",
+                "Each finished API request is appended and flushed to `raw_responses/`. A resumed submission skips checkpointed request IDs. However, an interruption after the provider finishes but before the local checkpoint is saved can rerun one unrecorded request and incur duplicate cost. Recorded API errors are not rerun automatically; inspect `outputs/failures.jsonl` and use `kllm-batch retry`. A partial checkpoint line stops resume for manual review.",
+            ]
+        )
     lines.extend(["", "## Submit after review", "", "From inside this run directory:", "", "```bash", "kllm-batch submit .", "```", ""])
     (run_dir / "REVIEW.md").write_text("\n".join(lines), encoding="utf-8")
 
@@ -359,9 +368,17 @@ def _execute_sync_requests(run_dir: Path, manifest: dict[str, Any], adapter: Pro
             output_path = run_dir / "raw_responses" / f"segment_{segment['index']:04d}_output.jsonl"
             completed_ids: set[str] = set()
             if output_path.exists():
-                for line in output_path.read_text(encoding="utf-8").splitlines():
+                for line_number, line in enumerate(output_path.read_text(encoding="utf-8").splitlines(), start=1):
                     if line.strip():
-                        item = json.loads(line)
+                        try:
+                            item = json.loads(line)
+                        except json.JSONDecodeError as exc:
+                            raise ValueError(
+                                f"Resume safety warning: {output_path} contains a partial or invalid "
+                                f"JSONL checkpoint at line {line_number}. No API requests were resumed. "
+                                "Do not rerun blindly; preserve the file and review the incomplete line "
+                                "before recovery."
+                            ) from exc
                         if "_kllm_normalized" in item:
                             completed_ids.add(str(item["_kllm_normalized"]["custom_id"]))
             with output_path.open("a", encoding="utf-8") as handle:
@@ -746,7 +763,7 @@ def prepare_retry(run: str | Path) -> Path:
         raise FileNotFoundError("No failures were recorded; sync and audit the run first")
     if failures.empty:
         raise ValueError("The run has no failed records to retry")
-    retryable = {"errored", "expired", "cancelled", "unknown", "malformed_output", "schema_violation", "missing_output", "missing_request_output", "duplicate_output_id"}
+    retryable = {"errored", "expired", "cancelled", "unknown", "sync_request_error", "malformed_output", "schema_violation", "missing_output", "missing_request_output", "duplicate_output_id"}
     selected = set(failures.loc[failures["category"].isin(retryable), "record_id"].astype(str))
     if not selected:
         raise ValueError("No retryable failed records were found")

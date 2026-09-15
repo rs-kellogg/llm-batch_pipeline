@@ -49,7 +49,9 @@ def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, mo
     assert runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai", "--sample-size", "4", "--seed", "42"]).exit_code == 0
     sample_run = next((tmp_path / "runs").iterdir())
     assert json.loads((sample_run / "manifest.json").read_text())["execution"] == "sync"
-    assert runner.invoke(app, ["submit", str(sample_run), "--yes"]).exit_code == 0
+    sample_submit = runner.invoke(app, ["submit", str(sample_run), "--yes"])
+    assert sample_submit.exit_code == 0
+    assert "Resume warning" in sample_submit.stdout
     assert runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai"]).exit_code == 0
     run = next(path for path in (tmp_path / "runs").iterdir() if json.loads((path / "manifest.json").read_text())["purpose"] == "production")
     assert runner.invoke(app, ["submit", str(run), "--yes"]).exit_code == 0

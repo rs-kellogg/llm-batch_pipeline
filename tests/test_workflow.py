@@ -9,6 +9,7 @@ import yaml
 
 import kellogg_llm_batch.core as core
 from kellogg_llm_batch.core import audit_run, compare_runs, prepare_retry, prepare_run, submit_run, sync_run
+from kellogg_llm_batch.providers.base import ProviderAdapter
 from kellogg_llm_batch.state import load_state, save_state
 
 from conftest import FakeAdapter
@@ -168,6 +169,71 @@ def test_prepare_sample_then_submit_sync_uses_exact_saved_requests(example_confi
     sync_calls = fake.sync_calls
     submit_run(run, fake)
     assert fake.sync_calls == sync_calls
+
+
+class InterruptOnceAdapter(FakeAdapter):
+    def __init__(self):
+        super().__init__()
+        self.calls_by_id: list[str] = []
+        self.interrupted = False
+
+    def run_sync(self, payload):
+        custom_id = payload["custom_id"]
+        self.calls_by_id.append(custom_id)
+        if custom_id == "request_00000001" and not self.interrupted:
+            self.interrupted = True
+            raise KeyboardInterrupt()
+        return super().run_sync(payload)
+
+
+def test_sync_resume_skips_checkpointed_requests(example_config, tmp_path, monkeypatch):
+    adapter = InterruptOnceAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    run = prepare_run(_temporary_config(example_config, tmp_path), "openai", sample_size=4, seed=17)
+
+    with pytest.raises(KeyboardInterrupt):
+        submit_run(run, adapter)
+    checkpoint = run / "raw_responses" / "segment_0000_output.jsonl"
+    assert len(checkpoint.read_text(encoding="utf-8").splitlines()) == 1
+
+    state = submit_run(run, adapter)
+    assert state["status"] == "completed"
+    assert adapter.calls_by_id.count("request_00000000") == 1
+    assert adapter.calls_by_id.count("request_00000001") == 2
+
+
+def test_sync_resume_blocks_partial_checkpoint_line(example_config, tmp_path, monkeypatch):
+    adapter = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    run = prepare_run(_temporary_config(example_config, tmp_path), "openai", sample_size=4, seed=17)
+    raw_dir = run / "raw_responses"
+    raw_dir.mkdir()
+    (raw_dir / "segment_0000_output.jsonl").write_text('{"_kllm_normalized":', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="partial or invalid JSONL checkpoint"):
+        submit_run(run, adapter)
+    assert adapter.sync_calls == 0
+
+
+class SyncRequestErrorAdapter(FakeAdapter):
+    def run_sync(self, payload):
+        if payload["custom_id"] == "request_00000000":
+            raise RuntimeError("temporary provider failure")
+        return super().run_sync(payload)
+
+
+def test_sync_request_error_is_available_for_manual_retry(example_config, tmp_path, monkeypatch):
+    adapter = SyncRequestErrorAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    run = prepare_run(_temporary_config(example_config, tmp_path), "openai", sample_size=4, seed=17)
+    state = submit_run(run, adapter)
+    assert state["status"] == "completed_with_failures"
+    failures = ProviderAdapter.read_jsonl(run / "outputs" / "failures.jsonl")
+    assert {row["category"] for row in failures} == {"sync_request_error"}
+
+    child = prepare_retry(run)
+    child_input = pd.read_parquet(child / "input_snapshot" / "canonical_input.parquet")
+    assert set(child_input["record_id"]) == {row["record_id"] for row in failures}
 
 
 def test_prepare_with_explicit_ids_and_request_integrity(example_config, tmp_path, monkeypatch):

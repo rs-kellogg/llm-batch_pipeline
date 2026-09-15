@@ -130,11 +130,24 @@ def submit_command(
         manifest = json.loads((run_dir / "manifest.json").read_text())
         estimate = manifest["cost_estimate"]["estimated_usd"]
         mode = manifest.get("execution", "batch")
+        if mode == "sync":
+            console.print(
+                "[yellow]Resume warning:[/yellow] checkpointed requests are skipped, but an interruption "
+                "after the provider finishes and before the local checkpoint is saved can rerun one "
+                "unrecorded request and incur duplicate cost. Recorded API errors are not rerun "
+                "automatically; inspect outputs/failures.jsonl and use retry. A partial checkpoint line "
+                "stops resume for manual review."
+            )
         if not yes and not typer.confirm(f"Execute {manifest['request_count']} {mode} request(s) with estimated maximum cost ${estimate:.4f}?"):
             raise typer.Abort()
         state = submit_run(run_dir)
         action = "Processed" if mode == "sync" else "Submitted"
         console.print(f"{action} run {state['run_id']} — {state['status']}")
+        if mode == "sync" and state["status"] == "completed_with_failures":
+            console.print(
+                "[yellow]API/request failures were recorded and were not rerun automatically.[/yellow] "
+                "Inspect outputs/failures.jsonl, then use `kllm-batch retry RUN_ID` to prepare a retry."
+            )
     except typer.Abort:
         console.print("Submission cancelled.")
         raise typer.Exit()

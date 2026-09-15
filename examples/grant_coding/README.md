@@ -162,6 +162,14 @@ hashes and is idempotent. If review reveals a needed change, edit the source
 YAML, prompt, context, or data and prepare a new run; do not patch generated
 payloads in place.
 
+Synchronous progress is checkpointed after every completed API request. On
+resume, saved request IDs are skipped. There is a small ambiguous window where
+the provider may finish but the local response has not yet been saved; that
+request may run again and incur duplicate cost. Recorded API errors are not
+automatically rerun—inspect `outputs/failures.jsonl` and use `retry`. If the
+last checkpoint line is partial or invalid, resume stops with a warning for
+manual review.
+
 To select records deliberately instead of randomly, create a UTF-8 text file
 with one `grant_id` per line and use `--ids-file pilot_ids.txt`. Selection
 files with duplicate IDs, or IDs absent from the validated input, are rejected.
