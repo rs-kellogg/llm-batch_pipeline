@@ -4,7 +4,6 @@ import json
 import math
 import os
 import platform
-import shlex
 import shutil
 import time
 import uuid
@@ -272,7 +271,7 @@ def prepare_run(
         "prepared_artifact_sha256": prepared_artifacts,
     }
     atomic_write_json(run_dir / "manifest.json", manifest)
-    _write_review(run_dir, final_run_dir, manifest, records)
+    _write_review(run_dir, manifest, records)
     save_state(run_dir, {"run_id": run_id, "stage": "prepared", "status": "prepared", "created_at": manifest["created_at"], "segments": state_segments})
     os.replace(run_dir, final_run_dir)
     return final_run_dir
@@ -294,7 +293,7 @@ def _package_versions() -> dict[str, str | None]:
     return versions
 
 
-def _write_review(run_dir: Path, final_run_dir: Path, manifest: dict[str, Any], records: list[Any]) -> None:
+def _write_review(run_dir: Path, manifest: dict[str, Any], records: list[Any]) -> None:
     estimate = manifest["cost_estimate"]["estimated_usd"]
     selection = manifest["selection"]
     if manifest["provider"] == "openai":
@@ -323,7 +322,7 @@ def _write_review(run_dir: Path, final_run_dir: Path, manifest: dict[str, Any], 
         "To print every rendered system and user prompt (requires `jq`):",
         "",
         "```bash",
-        f"cd {shlex.quote(str(final_run_dir))}",
+        "# Run from inside this run directory",
         inspection_command,
         "```",
         "",
@@ -335,7 +334,7 @@ def _write_review(run_dir: Path, final_run_dir: Path, manifest: dict[str, Any], 
         lines.extend(["", "## Selected record IDs", "", *[f"- `{record_id}`" for record_id in preview]])
         if len(record_ids) > len(preview):
             lines.append(f"- …and {len(record_ids) - len(preview):,} more; see `internal/canonical_input.parquet`.")
-    lines.extend(["", "## Submit after review", "", "```bash", f"kllm-batch submit {shlex.quote(str(final_run_dir))}", "```", ""])
+    lines.extend(["", "## Submit after review", "", "From inside this run directory:", "", "```bash", "kllm-batch submit .", "```", ""])
     (run_dir / "REVIEW.md").write_text("\n".join(lines), encoding="utf-8")
 
 

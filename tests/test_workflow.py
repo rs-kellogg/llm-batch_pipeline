@@ -52,8 +52,11 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     assert not (run / "requests" / "canonical_input.csv").exists()
     assert not (run / "requests" / "model_records.jsonl").exists()
     assert not (run / "requests" / "rendered_prompts.jsonl").exists()
-    assert "What to inspect" in (run / "REVIEW.md").read_text(encoding="utf-8")
-    assert "body.instructions" in (run / "REVIEW.md").read_text(encoding="utf-8")
+    review = (run / "REVIEW.md").read_text(encoding="utf-8")
+    assert "What to inspect" in review
+    assert "body.instructions" in review
+    assert "kllm-batch submit ." in review
+    assert "/Users/" not in review
     assert len(list((run / "requests").glob("segment_*.jsonl"))) == 1
     submit_run(run, fake)
     submit_run(run, fake)

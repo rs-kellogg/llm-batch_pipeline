@@ -1,5 +1,6 @@
 from typer.testing import CliRunner
 import json
+from pathlib import Path
 import yaml
 
 import kellogg_llm_batch.core as core
@@ -22,6 +23,13 @@ def test_example_validate_command(example_config):
     result = runner.invoke(app, ["validate", "-c", str(example_config)])
     assert result.exit_code == 0
     assert "Validation passed" in result.stdout
+
+
+def test_documentation_does_not_expose_personal_home_paths():
+    root = Path(__file__).parents[1]
+    documentation = [root / "README.md", *root.glob("plan*.md"), *root.glob("docs/*.md"), *root.glob("examples/*/README.md")]
+    for path in documentation:
+        assert "/Users/" not in path.read_text(encoding="utf-8"), path
 
 
 def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, monkeypatch):
