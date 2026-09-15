@@ -84,7 +84,7 @@ def prepare_command(
     provider: str = typer.Option(..., help="Configured provider: openai or anthropic."),
     sample_size: Optional[int] = typer.Option(None, min=1, help="Prepare a deterministic random sample instead of all rows."),
     seed: Optional[int] = typer.Option(None, help="Random seed used with --sample-size; defaults to evaluation.random_seed in project.yaml."),
-    ids_file: Optional[Path] = typer.Option(None, help="Text file containing one source record ID per line."),
+    ids_file: Optional[Path] = typer.Option(None, help="UTF-8 text file containing one source record ID per line, with no header."),
     execution: Optional[str] = typer.Option(None, help="Execution mode: sync or batch. Defaults to sync for a selection and batch for all rows."),
 ):
     """Select records and create an immutable, inspectable, costed run.
@@ -136,8 +136,26 @@ def submit_command(
         confirmation_needed = True
         if mode == "sync":
             existing_state = load_state(run_dir)
+            progress = sync_checkpoint_progress(run_dir)
             if existing_state.get("status") in {"completed", "completed_with_failures"}:
-                total = manifest["request_count"]
+                if progress["missing_ids"] or progress["unexpected_ids"]:
+                    console.print(
+                        f"[bold yellow]Integrity warning:[/bold yellow] state.json marks "
+                        f"{progress['total']} of {progress['total']} requests completed, but only "
+                        f"{progress['checkpointed']} of {progress['total']} expected responses exist "
+                        "in raw_responses."
+                    )
+                    if progress["missing_ids"]:
+                        console.print(f"Missing request IDs: {', '.join(progress['missing_ids'][:10])}")
+                    if progress["unexpected_ids"]:
+                        console.print(f"Unexpected response IDs: {', '.join(progress['unexpected_ids'][:10])}")
+                    console.print(
+                        "No API requests were run. Restore the immutable raw response, or use the source "
+                        "record IDs from input_snapshot/request_map.jsonl to prepare a new run with "
+                        "`kllm-batch prepare --ids-file rerun_ids.txt`."
+                    )
+                    raise typer.Exit(1)
+                total = progress["total"]
                 console.print(
                     f"No action: {total} of {total} synchronous requests already finished "
                     f"(status: {existing_state['status']}). No API requests were run and no new run was created."
@@ -148,7 +166,12 @@ def submit_command(
                         "`kllm-batch retry .` to prepare a retry.[/yellow]"
                     )
                 return
-            progress = sync_checkpoint_progress(run_dir)
+            if progress["unexpected_ids"]:
+                console.print(
+                    f"[bold yellow]Integrity warning:[/bold yellow] raw_responses contains unexpected "
+                    f"request IDs: {', '.join(progress['unexpected_ids'][:10])}. No API requests were run."
+                )
+                raise typer.Exit(1)
             if progress["checkpointed"]:
                 console.print(
                     f"Resuming partial synchronous run: {progress['checkpointed']} of {progress['total']} "
@@ -198,6 +221,8 @@ def submit_command(
     except typer.Abort:
         console.print("Submission cancelled.")
         raise typer.Exit()
+    except typer.Exit:
+        raise
     except Exception as exc:
         _fail(exc)
 

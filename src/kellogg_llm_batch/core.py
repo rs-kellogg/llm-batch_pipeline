@@ -365,28 +365,53 @@ def _read_sync_checkpoint_results(output_path: Path) -> dict[str, dict[str, Any]
             ) from exc
         normalized = item.get("_kllm_normalized")
         if isinstance(normalized, dict) and normalized.get("custom_id") is not None:
-            completed[str(normalized["custom_id"])] = normalized
+            custom_id = str(normalized["custom_id"])
+            if custom_id in completed:
+                raise ValueError(
+                    f"Resume safety warning: {output_path} contains duplicate checkpoint ID "
+                    f"{custom_id!r}. No API requests were resumed; review the immutable raw output."
+                )
+            completed[custom_id] = normalized
     return completed
 
 
-def sync_checkpoint_progress(run: str | Path) -> dict[str, int]:
+def sync_checkpoint_progress(run: str | Path) -> dict[str, Any]:
     """Summarize safely checkpointed synchronous requests without contacting a provider."""
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
     if manifest.get("execution", "batch") != "sync":
         raise ValueError(f"Run {manifest['run_id']} does not use synchronous execution")
+    _verify_prepared_artifacts(run_dir, manifest)
+    expected_ids = {
+        str(payload["custom_id"])
+        for index in range(manifest["segment_count"])
+        for payload in ProviderAdapter.read_jsonl(run_dir / "api_requests" / f"segment_{index:04d}.jsonl")
+    }
     checkpointed: dict[str, dict[str, Any]] = {}
     for index in range(manifest["segment_count"]):
         output_path = run_dir / "raw_responses" / f"segment_{index:04d}_output.jsonl"
-        checkpointed.update(_read_sync_checkpoint_results(output_path))
-    total = int(manifest["request_count"])
-    completed = len(checkpointed)
-    failures = sum(result.get("status") != "succeeded" for result in checkpointed.values())
+        segment_results = _read_sync_checkpoint_results(output_path)
+        duplicate_ids = checkpointed.keys() & segment_results.keys()
+        if duplicate_ids:
+            duplicate_id = sorted(duplicate_ids)[0]
+            raise ValueError(
+                f"Resume safety warning: checkpoint ID {duplicate_id!r} appears in more than one raw "
+                "response file. No API requests were resumed; review the immutable raw output."
+            )
+        checkpointed.update(segment_results)
+    missing_ids = sorted(expected_ids - checkpointed.keys())
+    unexpected_ids = sorted(checkpointed.keys() - expected_ids)
+    completed_ids = expected_ids & checkpointed.keys()
+    total = len(expected_ids)
+    completed = len(completed_ids)
+    failures = sum(checkpointed[custom_id].get("status") != "succeeded" for custom_id in completed_ids)
     return {
         "total": total,
         "checkpointed": completed,
-        "remaining": max(0, total - completed),
+        "remaining": len(missing_ids),
         "recorded_failures": failures,
+        "missing_ids": missing_ids,
+        "unexpected_ids": unexpected_ids,
     }
 
 
@@ -399,9 +424,21 @@ def _execute_sync_requests(
     (run_dir / "raw_responses").mkdir(exist_ok=True)
     with RunLock(run_dir):
         state = load_state(run_dir)
-        if state.get("status") in {"completed", "completed_with_failures"}:
-            return state
         progress = sync_checkpoint_progress(run_dir)
+        if state.get("status") in {"completed", "completed_with_failures"}:
+            if progress["missing_ids"] or progress["unexpected_ids"]:
+                raise ValueError(
+                    f"Run integrity error: state.json marks the run {state['status']}, but raw_responses "
+                    f"contains {progress['checkpointed']} of {progress['total']} expected responses. "
+                    "No API requests were run. Restore the immutable raw response or prepare a new "
+                    "selected-ID run."
+                )
+            return state
+        if progress["unexpected_ids"]:
+            raise ValueError(
+                "Resume safety warning: raw_responses contains unexpected checkpoint IDs: "
+                f"{progress['unexpected_ids'][:10]}. No API requests were resumed."
+            )
         completed_count = progress["checkpointed"]
         total_count = progress["total"]
         for segment in state["segments"]:

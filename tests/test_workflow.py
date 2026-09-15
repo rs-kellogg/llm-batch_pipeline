@@ -170,6 +170,13 @@ def test_prepare_sample_then_submit_sync_uses_exact_saved_requests(example_confi
     submit_run(run, fake)
     assert fake.sync_calls == sync_calls
 
+    raw_output = run / "raw_responses" / "segment_0000_output.jsonl"
+    saved_lines = raw_output.read_text(encoding="utf-8").splitlines()
+    raw_output.write_text(saved_lines[0] + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Run integrity error"):
+        submit_run(run, fake)
+    assert fake.sync_calls == sync_calls
+
 
 class InterruptOnceAdapter(FakeAdapter):
     def __init__(self):

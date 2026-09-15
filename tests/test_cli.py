@@ -60,6 +60,18 @@ def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, mo
     assert "2 of 2 synchronous requests already finished" in repeated_submit.stdout
     assert "No API requests were run and no new run was created" in " ".join(repeated_submit.stdout.split())
     assert fake.sync_calls == sync_calls
+    raw_output = sample_run / "raw_responses" / "segment_0000_output.jsonl"
+    saved_lines = raw_output.read_text(encoding="utf-8").splitlines()
+    raw_output.write_text(saved_lines[0] + "\n", encoding="utf-8")
+    tampered_submit = runner.invoke(app, ["submit", str(sample_run)])
+    tampered_output = " ".join(tampered_submit.stdout.split())
+    assert tampered_submit.exit_code == 1
+    assert "Integrity warning" in tampered_output
+    assert "only 1 of 2 expected responses exist in raw_responses" in tampered_output
+    assert "Missing request IDs: request_00000001" in tampered_output
+    assert "No API requests were run" in tampered_output
+    assert "--ids-file rerun_ids.txt" in tampered_output
+    assert fake.sync_calls == sync_calls
     assert runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai"]).exit_code == 0
     run = next(path for path in (tmp_path / "runs").iterdir() if json.loads((path / "manifest.json").read_text())["purpose"] == "production")
     assert runner.invoke(app, ["submit", str(run), "--yes"]).exit_code == 0

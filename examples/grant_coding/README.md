@@ -212,6 +212,39 @@ kllm-batch retry RUN_ID
 
 This prepares a child run for retryable failed rows without submitting it. Review the new cost and request files, then use `kllm-batch submit CHILD_RUN_ID`. After processing, combine attempts with `kllm-batch merge CHILD_RUN_ID`.
 
+### Intentionally rerun selected records
+
+Completed runs and their raw responses are immutable. Do not delete a response
+or overwrite an earlier result to force another API call. To code selected
+records again, create a UTF-8 file such as `rerun_ids.txt` containing their
+source `grant_id` values, one per line with no header:
+
+```text
+GRANT-002
+GRANT-007
+```
+
+Then prepare a separate run:
+
+```bash
+kllm-batch prepare \
+  -c examples/grant_coding/project.yaml \
+  --provider openai \
+  --ids-file rerun_ids.txt
+
+kllm-batch submit NEW_RUN_ID
+```
+
+Blank lines are ignored. Duplicate IDs and IDs not found in the configured
+input are rejected. The original and new runs remain separate so researchers
+can compare them and explicitly choose which result to use downstream.
+
+If a raw response was deleted accidentally, running `submit` again reports an
+integrity warning and makes no API calls. Use
+`input_snapshot/request_map.jsonl` to map the reported missing request ID to
+the source record IDs, then restore the original response from backup or use
+those record IDs in `rerun_ids.txt`.
+
 ## 9. Run with Anthropic
 
 ```bash

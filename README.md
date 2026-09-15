@@ -100,6 +100,11 @@ useful; failed validation creates no run or provider payload.
 
 - If a command is interrupted, rerun `status` and then `sync`; saved remote IDs
   prevent duplicate submission of already-recorded segments.
+- Treat `raw_responses/` as immutable. If a completed synchronous run is
+  missing an expected raw response, `submit` reports an integrity warning and
+  makes no API calls. Restore the response from backup, or put the affected
+  source `record_id` values in a UTF-8 text file with one ID per line and no
+  header, then prepare and review a new run with `--ids-file rerun_ids.txt`.
 - If `state.json` is damaged, the reader falls back to
   `state.previous.json`. Preserve both files when asking for support.
 - If a lock remains after a crashed process, first verify that no other local
