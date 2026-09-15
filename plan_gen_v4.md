@@ -306,12 +306,12 @@ Each run directory contains:
 - `manifest.json`: immutable configuration, source, prompt, schema, package version, and environment snapshot.
 - `state.json`: compact mutable segment/job state.
 - `state.previous.json`: last valid state for recovery.
-- `requests/`: exact provider-native JSONL requests, including the rendered prompts.
-- `internal/`: one canonical Parquet input snapshot and one request-to-source-row JSONL map.
-- `snapshot/`: the project configuration, schema, prompt templates, and context used for the run.
-- `raw/`: immutable provider responses and errors, created when responses are retrieved.
-- `results/`: normalized CSV and Parquet results plus conditional failure JSONL, created during processing.
-- `reports/`: cost, audit, and comparison reports, created during processing.
+- `api_requests/`: exact provider-native JSONL requests, including the rendered prompts.
+- `input_snapshot/`: one canonical Parquet input snapshot and one request-to-source-row JSONL map.
+- `project_snapshot/`: the project configuration, schema, prompt templates, and context used for the run.
+- `raw_responses/`: immutable provider responses and errors, created when responses are retrieved.
+- `outputs/`: normalized CSV and Parquet results plus conditional failure JSONL, created during processing.
+- `run_reports/`: cost, audit, and comparison reports, created during processing.
 
 Do not duplicate the canonical input as CSV or write separate model-record or
 rendered-prompt files: the provider requests already contain the fully rendered

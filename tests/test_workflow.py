@@ -34,42 +34,43 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     run = prepare_run(config, "openai")
     assert (run / "manifest.json").exists()
     manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["layout_version"] == 2
     assert manifest["purpose"] == "production"
     assert manifest["execution"] == "batch"
     assert manifest["cost_estimate"]["execution"] == "batch"
     assert {path.name for path in run.iterdir()} == {
         "REVIEW.md",
-        "internal",
+        "input_snapshot",
         "manifest.json",
-        "requests",
-        "snapshot",
+        "api_requests",
+        "project_snapshot",
         "state.json",
     }
-    assert {path.name for path in (run / "internal").iterdir()} == {
+    assert {path.name for path in (run / "input_snapshot").iterdir()} == {
         "canonical_input.parquet",
         "request_map.jsonl",
     }
-    assert not (run / "requests" / "canonical_input.csv").exists()
-    assert not (run / "requests" / "model_records.jsonl").exists()
-    assert not (run / "requests" / "rendered_prompts.jsonl").exists()
+    assert not (run / "api_requests" / "canonical_input.csv").exists()
+    assert not (run / "api_requests" / "model_records.jsonl").exists()
+    assert not (run / "api_requests" / "rendered_prompts.jsonl").exists()
     review = (run / "REVIEW.md").read_text(encoding="utf-8")
     assert "What to inspect" in review
     assert "body.instructions" in review
     assert "kllm-batch submit ." in review
     assert "/Users/" not in review
-    assert len(list((run / "requests").glob("segment_*.jsonl"))) == 1
+    assert len(list((run / "api_requests").glob("segment_*.jsonl"))) == 1
     submit_run(run, fake)
     submit_run(run, fake)
     assert fake.submissions == 1
     sync_run(run, adapter=fake)
-    results = pd.read_parquet(run / "results" / "results.parquet")
+    results = pd.read_parquet(run / "outputs" / "results.parquet")
     assert len(results) == 10
     assert results["record_id"].is_unique
-    assert (run / "results" / "results.csv").exists()
-    assert not (run / "results" / "failures.jsonl").exists()
-    assert not (run / "results" / "failures.parquet").exists()
-    assert not (run / "results" / "failures.csv").exists()
-    assert not (run / "results" / "provenance.json").exists()
+    assert (run / "outputs" / "results.csv").exists()
+    assert not (run / "outputs" / "failures.jsonl").exists()
+    assert not (run / "outputs" / "failures.parquet").exists()
+    assert not (run / "outputs" / "failures.csv").exists()
+    assert not (run / "outputs" / "provenance.json").exists()
     for column in (
         "run_id",
         "provider",
@@ -99,12 +100,12 @@ def test_consolidated_request_map_supports_multiple_segments(example_config, tmp
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
 
     run = prepare_run(config, "openai")
-    assert len(list((run / "requests").glob("segment_*.jsonl"))) == 2
-    assert [path.name for path in (run / "internal").glob("*map*")] == ["request_map.jsonl"]
+    assert len(list((run / "api_requests").glob("segment_*.jsonl"))) == 2
+    assert [path.name for path in (run / "input_snapshot").glob("*map*")] == ["request_map.jsonl"]
     submit_run(run, fake)
     sync_run(run, adapter=fake)
 
-    results = pd.read_parquet(run / "results" / "results.parquet")
+    results = pd.read_parquet(run / "outputs" / "results.parquet")
     assert len(results) == 10
     assert results["record_id"].is_unique
 
@@ -118,9 +119,9 @@ def test_compare_exports_disagreements(example_config, tmp_path, monkeypatch):
     for run in (run_a, run_b):
         submit_run(run, fake)
         sync_run(run, adapter=fake)
-    changed = pd.read_parquet(run_b / "results" / "results.parquet")
+    changed = pd.read_parquet(run_b / "outputs" / "results.parquet")
     changed.loc[0, "primary_label"] = "technical"
-    changed.to_parquet(run_b / "results" / "results.parquet", index=False)
+    changed.to_parquet(run_b / "outputs" / "results.parquet", index=False)
     report = compare_runs(run_a, run_b)
     assert report["disagreement_rows"] >= 1
     assert report["metrics"]["primary_label"]["percent_agreement"] < 1
@@ -147,7 +148,7 @@ def test_prepare_sample_then_submit_sync_uses_exact_saved_requests(example_confi
     assert manifest["cost_estimate"]["execution"] == "sync"
     assert manifest["selection"] == {"method": "random", "selected_count": 4, "seed": 17}
     assert manifest["selected_rows"] == 4
-    payloads = [json.loads(line) for line in (run / "requests" / "segment_0000.jsonl").read_text(encoding="utf-8").splitlines()]
+    payloads = [json.loads(line) for line in (run / "api_requests" / "segment_0000.jsonl").read_text(encoding="utf-8").splitlines()]
     assert '"record_id"' in payloads[0]["body"]["input"]
     for logical_name in raw["input"]["fields_sent"]:
         assert f'"{logical_name}"' in payloads[0]["body"]["input"]
@@ -156,7 +157,7 @@ def test_prepare_sample_then_submit_sync_uses_exact_saved_requests(example_confi
     state = submit_run(run, fake)
     assert state["status"] == "completed"
     assert state["stage"] == "audited"
-    assert len(pd.read_parquet(run / "results" / "results.parquet")) == 4
+    assert len(pd.read_parquet(run / "outputs" / "results.parquet")) == 4
     sync_calls = fake.sync_calls
     submit_run(run, fake)
     assert fake.sync_calls == sync_calls
@@ -172,10 +173,10 @@ def test_prepare_with_explicit_ids_and_request_integrity(example_config, tmp_pat
     manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["selection"]["method"] == "ids_file"
     assert manifest["execution"] == "sync"
-    selected = pd.read_parquet(run / "internal" / "canonical_input.parquet")
+    selected = pd.read_parquet(run / "input_snapshot" / "canonical_input.parquet")
     assert selected["record_id"].tolist() == ["GRANT-002", "GRANT-007"]
 
-    requests = run / "requests" / "segment_0000.jsonl"
+    requests = run / "api_requests" / "segment_0000.jsonl"
     requests.write_text(requests.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="artifact changed"):
         submit_run(run, fake)
@@ -249,16 +250,16 @@ def test_manual_retry_contains_only_failed_rows(example_config, tmp_path, monkey
     sync_run(run, adapter=fake)
     failures = pd.DataFrame(
         json.loads(line)
-        for line in (run / "results" / "failures.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (run / "outputs" / "failures.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     )
     assert len(set(failures["record_id"])) == 1
     assert set(failures["validation_status"]) == {"invalid"}
     assert failures["_kllm_source_row_sha256"].notna().all()
-    assert not (run / "results" / "failures.parquet").exists()
-    assert not (run / "results" / "failures.csv").exists()
+    assert not (run / "outputs" / "failures.parquet").exists()
+    assert not (run / "outputs" / "failures.csv").exists()
     child = prepare_retry(run)
-    child_input = pd.read_parquet(child / "internal" / "canonical_input.parquet")
+    child_input = pd.read_parquet(child / "input_snapshot" / "canonical_input.parquet")
     assert len(child_input) == 1
     assert json.loads((child / "manifest.json").read_text())["parent_run"] == str(run)
 

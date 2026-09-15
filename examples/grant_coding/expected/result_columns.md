@@ -15,6 +15,7 @@
 Both `results.csv` and `results.parquet` contain these columns. Shared prompt
 hashes, schema, configuration, source checksum, provider options, environment,
 and pricing assumptions are retained once in `manifest.json`. Raw provider
-responses remain under `raw/`. If failures occur, `failures.jsonl` records the
+responses remain under `raw_responses/`. If failures occur,
+`outputs/failures.jsonl` records the
 error category and message with the same relevant row provenance; no empty
 failure file is created for a successful run.

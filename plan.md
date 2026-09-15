@@ -17,7 +17,7 @@ repository; this shorter file is its implementation index.
   prompt, schema, model, environment, and pricing metadata once in the manifest.
 - Keep the prepared-run review surface small: lead with `REVIEW.md`, retain only
   the exact provider requests containing the rendered prompts, and place the
-  single canonical Parquet snapshot and request map under `internal/`.
+  single canonical Parquet snapshot and request map under `input_snapshot/`.
 
 ## Input contract and blocking checks
 

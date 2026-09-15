@@ -54,6 +54,10 @@ Supplying `--sample-size` or `--ids-file` makes the run a pilot and defaults to
 synchronous execution. Omitting both selects every row and defaults to the
 provider's batch API. `--execution sync|batch` overrides either default. Both
 paths use the same run layout, validation, audit, retry, and provenance code.
+A synchronous `submit` waits for responses, writes normalized results, and
+runs the audit automatically. A batch `submit` only starts the remote jobs;
+`sync` downloads completed responses and then performs the same processing and
+automatic audit. The separate `audit` command is available to rerun the check.
 
 One input row represents one research unit. `fields_sent` controls what providers receive; `columns_preserved` is carried to results locally. Duplicate IDs and exact duplicate model inputs are blocking errors.
 
