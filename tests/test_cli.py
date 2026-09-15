@@ -52,6 +52,8 @@ def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, mo
     sample_submit = runner.invoke(app, ["submit", str(sample_run), "--yes"])
     assert sample_submit.exit_code == 0
     assert "Resuming partial" not in sample_submit.stdout
+    assert "Completed 1 out of 2 synchronous requests" in sample_submit.stdout
+    assert "Completed 2 out of 2 synchronous requests" in sample_submit.stdout
     sync_calls = fake.sync_calls
     repeated_submit = runner.invoke(app, ["submit", str(sample_run)])
     assert repeated_submit.exit_code == 0
@@ -97,8 +99,12 @@ def test_submit_warns_only_when_resuming_partial_sync_run(example_config, tmp_pa
         encoding="utf-8",
     )
 
-    resumed = runner.invoke(app, ["submit", str(run), "--yes"])
+    resumed = runner.invoke(app, ["submit", str(run)], input="y\n")
     assert resumed.exit_code == 0
-    assert "Resuming partial synchronous run: 1 of 2 requests" in resumed.stdout
-    assert "one unrecorded request could run again" in resumed.stdout
+    output = " ".join(resumed.stdout.split())
+    assert "Resuming partial synchronous run: 1 of 2 requests" in output
+    assert "1 remains" in output
+    assert "one unrecorded request could run again" in output
+    assert "Execute 1 remaining sync request with estimated maximum remaining cost $0.0025?" in output
+    assert "Completed 2 out of 2 synchronous requests" in output
     assert fake.sync_calls == 1

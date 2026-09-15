@@ -169,6 +169,9 @@ request may run again and incur duplicate cost. Recorded API errors are not
 automatically rerun—inspect `outputs/failures.jsonl` and use `retry`. If the
 last checkpoint line is partial or invalid, resume stops with a warning for
 manual review.
+The CLI prints a running completion count after every synchronous request. If
+you resume, the confirmation prompt shows only the remaining request count and
+its proportional estimated maximum cost.
 
 To select records deliberately instead of randomly, create a UTF-8 text file
 with one `grant_id` per line and use `--ids-file pilot_ids.txt`. Selection

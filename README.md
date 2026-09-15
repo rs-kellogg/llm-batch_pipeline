@@ -63,6 +63,9 @@ For synchronous resumes, completed request IDs already checkpointed in
 provider finishes but before the response is saved locally can rerun that one
 request. Recorded API errors require `retry`, and a partial JSONL checkpoint
 stops resume with a safety warning rather than continuing blindly.
+During synchronous execution, the CLI reports each completed request. On
+resume, its confirmation count and cost estimate cover only requests that are
+not already checkpointed.
 
 One input row represents one research unit. `fields_sent` controls what providers receive; `columns_preserved` is carried to results locally. Duplicate IDs and exact duplicate model inputs are blocking errors.
 

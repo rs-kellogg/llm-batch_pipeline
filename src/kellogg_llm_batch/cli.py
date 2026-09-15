@@ -130,6 +130,10 @@ def submit_command(
         manifest = json.loads((run_dir / "manifest.json").read_text())
         estimate = manifest["cost_estimate"]["estimated_usd"]
         mode = manifest.get("execution", "batch")
+        request_count = manifest["request_count"]
+        confirmation_count = request_count
+        confirmation_estimate = estimate
+        confirmation_needed = True
         if mode == "sync":
             existing_state = load_state(run_dir)
             if existing_state.get("status") in {"completed", "completed_with_failures"}:
@@ -148,20 +152,42 @@ def submit_command(
             if progress["checkpointed"]:
                 console.print(
                     f"Resuming partial synchronous run: {progress['checkpointed']} of {progress['total']} "
-                    f"requests are checkpointed and will be skipped; {progress['remaining']} remain."
+                    f"requests are checkpointed and will be skipped; {progress['remaining']} "
+                    f"{'remains' if progress['remaining'] == 1 else 'remain'}."
                 )
-                console.print(
-                    "[yellow]Warning:[/yellow] an API response received immediately before an interruption "
-                    "may lack a checkpoint, so one unrecorded request could run again and incur duplicate cost."
-                )
+                if progress["remaining"]:
+                    console.print(
+                        "[yellow]Warning:[/yellow] an API response received immediately before an interruption "
+                        "may lack a checkpoint, so one unrecorded request could run again and incur duplicate cost."
+                    )
                 if progress["recorded_failures"]:
                     console.print(
                         f"[yellow]{progress['recorded_failures']} checkpointed API/request failure(s) will "
                         "not be rerun automatically; use `kllm-batch retry` after processing.[/yellow]"
                     )
-        if not yes and not typer.confirm(f"Execute {manifest['request_count']} {mode} request(s) with estimated maximum cost ${estimate:.4f}?"):
+            confirmation_count = progress["remaining"]
+            confirmation_estimate = estimate * confirmation_count / request_count if request_count else 0.0
+            if confirmation_count == 0:
+                confirmation_needed = False
+                console.print(
+                    f"All {request_count} synchronous requests are checkpointed. "
+                    "No API requests will run; continuing local processing."
+                )
+        noun = "request" if confirmation_count == 1 else "requests"
+        qualifier = " remaining" if mode == "sync" and confirmation_count < request_count else ""
+        cost_qualifier = " remaining" if qualifier else ""
+        if confirmation_needed and not yes and not typer.confirm(
+            f"Execute {confirmation_count}{qualifier} {mode} {noun} with estimated maximum{cost_qualifier} "
+            f"cost ${confirmation_estimate:.4f}?"
+        ):
             raise typer.Abort()
-        state = submit_run(run_dir)
+        def print_sync_progress(completed: int, total: int, outcome) -> None:
+            message = f"Completed {completed} out of {total} synchronous requests."
+            if outcome.status != "succeeded":
+                message += " [yellow]API/request failure recorded.[/yellow]"
+            console.print(message)
+
+        state = submit_run(run_dir, progress_callback=print_sync_progress if mode == "sync" else None)
         action = "Processed" if mode == "sync" else "Submitted"
         console.print(f"{action} run {state['run_id']} — {state['status']}")
         if mode == "sync" and state["status"] == "completed_with_failures":

@@ -11,7 +11,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 from jsonschema import Draft202012Validator
@@ -390,12 +390,20 @@ def sync_checkpoint_progress(run: str | Path) -> dict[str, int]:
     }
 
 
-def _execute_sync_requests(run_dir: Path, manifest: dict[str, Any], adapter: ProviderAdapter) -> dict:
+def _execute_sync_requests(
+    run_dir: Path,
+    manifest: dict[str, Any],
+    adapter: ProviderAdapter,
+    progress_callback: Callable[[int, int, NormalizedResult], None] | None = None,
+) -> dict:
     (run_dir / "raw_responses").mkdir(exist_ok=True)
     with RunLock(run_dir):
         state = load_state(run_dir)
         if state.get("status") in {"completed", "completed_with_failures"}:
             return state
+        progress = sync_checkpoint_progress(run_dir)
+        completed_count = progress["checkpointed"]
+        total_count = progress["total"]
         for segment in state["segments"]:
             if segment["status"] in {"downloaded", "processed"}:
                 continue
@@ -418,6 +426,9 @@ def _execute_sync_requests(run_dir: Path, manifest: dict[str, Any], adapter: Pro
                     handle.write(json.dumps({"_kllm_normalized": outcome.model_dump()}, ensure_ascii=False) + "\n")
                     handle.flush()
                     os.fsync(handle.fileno())
+                    completed_count += 1
+                    if progress_callback is not None:
+                        progress_callback(completed_count, total_count, outcome)
             segment.update(status="downloaded", provider_status="completed", error=None)
             state["stage"] = "downloaded"
             save_state(run_dir, state)
@@ -425,13 +436,17 @@ def _execute_sync_requests(run_dir: Path, manifest: dict[str, Any], adapter: Pro
     return load_state(run_dir)
 
 
-def submit_run(run: str | Path, adapter: ProviderAdapter | None = None) -> dict:
+def submit_run(
+    run: str | Path,
+    adapter: ProviderAdapter | None = None,
+    progress_callback: Callable[[int, int, NormalizedResult], None] | None = None,
+) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
     adapter = adapter or get_provider(manifest["provider"])
     _verify_prepared_artifacts(run_dir, manifest)
     if manifest.get("execution", "batch") == "sync":
-        return _execute_sync_requests(run_dir, manifest, adapter)
+        return _execute_sync_requests(run_dir, manifest, adapter, progress_callback)
     with RunLock(run_dir):
         state = load_state(run_dir)
         if state.get("status") in {"completed", "completed_with_failures", "cancelled"}:
