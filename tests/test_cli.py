@@ -51,7 +51,13 @@ def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, mo
     assert json.loads((sample_run / "manifest.json").read_text())["execution"] == "sync"
     sample_submit = runner.invoke(app, ["submit", str(sample_run), "--yes"])
     assert sample_submit.exit_code == 0
-    assert "Resume warning" in sample_submit.stdout
+    assert "Resuming partial" not in sample_submit.stdout
+    sync_calls = fake.sync_calls
+    repeated_submit = runner.invoke(app, ["submit", str(sample_run)])
+    assert repeated_submit.exit_code == 0
+    assert "2 of 2 synchronous requests already finished" in repeated_submit.stdout
+    assert "No API requests were run and no new run was created" in " ".join(repeated_submit.stdout.split())
+    assert fake.sync_calls == sync_calls
     assert runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai"]).exit_code == 0
     run = next(path for path in (tmp_path / "runs").iterdir() if json.loads((path / "manifest.json").read_text())["purpose"] == "production")
     assert runner.invoke(app, ["submit", str(run), "--yes"]).exit_code == 0
@@ -60,3 +66,39 @@ def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, mo
     assert runner.invoke(app, ["audit", str(run)]).exit_code == 0
     assert runner.invoke(app, ["merge", str(run)]).exit_code == 0
     assert runner.invoke(app, ["compare", str(run), str(run)]).exit_code == 0
+
+
+def test_submit_warns_only_when_resuming_partial_sync_run(example_config, tmp_path, monkeypatch):
+    raw = yaml.safe_load(example_config.read_text())
+    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
+    raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
+    raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
+    raw["prompt"]["context"]["codebook"]["path"] = str(example_config.parent / "context" / "codebook.csv")
+    raw["output"]["runs_directory"] = str(tmp_path / "runs")
+    config = tmp_path / "project.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+
+    prepared = runner.invoke(
+        app,
+        ["prepare", "-c", str(config), "--provider", "openai", "--sample-size", "4", "--seed", "42"],
+    )
+    assert prepared.exit_code == 0
+    run = next((tmp_path / "runs").iterdir())
+    payload = fake.read_jsonl(run / "api_requests" / "segment_0000.jsonl")[0]
+    outcome = fake.run_sync(payload)
+    fake.sync_calls = 0
+    raw_dir = run / "raw_responses"
+    raw_dir.mkdir()
+    (raw_dir / "segment_0000_output.jsonl").write_text(
+        json.dumps({"_kllm_normalized": outcome.model_dump()}) + "\n",
+        encoding="utf-8",
+    )
+
+    resumed = runner.invoke(app, ["submit", str(run), "--yes"])
+    assert resumed.exit_code == 0
+    assert "Resuming partial synchronous run: 1 of 2 requests" in resumed.stdout
+    assert "one unrecorded request could run again" in resumed.stdout
+    assert fake.sync_calls == 1

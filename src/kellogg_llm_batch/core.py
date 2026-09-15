@@ -332,15 +332,6 @@ def _write_review(run_dir: Path, manifest: dict[str, Any], records: list[Any]) -
         lines.extend(["", "## Selected record IDs", "", *[f"- `{record_id}`" for record_id in preview]])
         if len(record_ids) > len(preview):
             lines.append(f"- …and {len(record_ids) - len(preview):,} more; see `input_snapshot/canonical_input.parquet`.")
-    if manifest["execution"] == "sync":
-        lines.extend(
-            [
-                "",
-                "## Synchronous resume warning",
-                "",
-                "Each finished API request is appended and flushed to `raw_responses/`. A resumed submission skips checkpointed request IDs. However, an interruption after the provider finishes but before the local checkpoint is saved can rerun one unrecorded request and incur duplicate cost. Recorded API errors are not rerun automatically; inspect `outputs/failures.jsonl` and use `kllm-batch retry`. A partial checkpoint line stops resume for manual review.",
-            ]
-        )
     lines.extend(["", "## Submit after review", "", "From inside this run directory:", "", "```bash", "kllm-batch submit .", "```", ""])
     (run_dir / "REVIEW.md").write_text("\n".join(lines), encoding="utf-8")
 
@@ -356,6 +347,49 @@ def _verify_prepared_artifacts(run_dir: Path, manifest: dict[str, Any]) -> None:
             )
 
 
+def _read_sync_checkpoint_results(output_path: Path) -> dict[str, dict[str, Any]]:
+    completed: dict[str, dict[str, Any]] = {}
+    if not output_path.exists():
+        return completed
+    for line_number, line in enumerate(output_path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Resume safety warning: {output_path} contains a partial or invalid "
+                f"JSONL checkpoint at line {line_number}. No API requests were resumed. "
+                "Do not rerun blindly; preserve the file and review the incomplete line "
+                "before recovery."
+            ) from exc
+        normalized = item.get("_kllm_normalized")
+        if isinstance(normalized, dict) and normalized.get("custom_id") is not None:
+            completed[str(normalized["custom_id"])] = normalized
+    return completed
+
+
+def sync_checkpoint_progress(run: str | Path) -> dict[str, int]:
+    """Summarize safely checkpointed synchronous requests without contacting a provider."""
+    run_dir = resolve_run(run)
+    manifest = _manifest(run_dir)
+    if manifest.get("execution", "batch") != "sync":
+        raise ValueError(f"Run {manifest['run_id']} does not use synchronous execution")
+    checkpointed: dict[str, dict[str, Any]] = {}
+    for index in range(manifest["segment_count"]):
+        output_path = run_dir / "raw_responses" / f"segment_{index:04d}_output.jsonl"
+        checkpointed.update(_read_sync_checkpoint_results(output_path))
+    total = int(manifest["request_count"])
+    completed = len(checkpointed)
+    failures = sum(result.get("status") != "succeeded" for result in checkpointed.values())
+    return {
+        "total": total,
+        "checkpointed": completed,
+        "remaining": max(0, total - completed),
+        "recorded_failures": failures,
+    }
+
+
 def _execute_sync_requests(run_dir: Path, manifest: dict[str, Any], adapter: ProviderAdapter) -> dict:
     (run_dir / "raw_responses").mkdir(exist_ok=True)
     with RunLock(run_dir):
@@ -366,21 +400,7 @@ def _execute_sync_requests(run_dir: Path, manifest: dict[str, Any], adapter: Pro
             if segment["status"] in {"downloaded", "processed"}:
                 continue
             output_path = run_dir / "raw_responses" / f"segment_{segment['index']:04d}_output.jsonl"
-            completed_ids: set[str] = set()
-            if output_path.exists():
-                for line_number, line in enumerate(output_path.read_text(encoding="utf-8").splitlines(), start=1):
-                    if line.strip():
-                        try:
-                            item = json.loads(line)
-                        except json.JSONDecodeError as exc:
-                            raise ValueError(
-                                f"Resume safety warning: {output_path} contains a partial or invalid "
-                                f"JSONL checkpoint at line {line_number}. No API requests were resumed. "
-                                "Do not rerun blindly; preserve the file and review the incomplete line "
-                                "before recovery."
-                            ) from exc
-                        if "_kllm_normalized" in item:
-                            completed_ids.add(str(item["_kllm_normalized"]["custom_id"]))
+            completed_ids = set(_read_sync_checkpoint_results(output_path))
             with output_path.open("a", encoding="utf-8") as handle:
                 for payload in ProviderAdapter.read_jsonl(run_dir / segment["request_file"]):
                     custom_id = str(payload["custom_id"])

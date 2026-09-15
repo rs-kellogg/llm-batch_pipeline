@@ -8,9 +8,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from .core import audit_run, cancel_run, compare_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, sync_run
+from .core import audit_run, cancel_run, compare_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, sync_checkpoint_progress, sync_run
 from .scaffold import scaffold_project
-from .state import resolve_run
+from .state import load_state, resolve_run
 from .validation import ProjectValidationError, validate_project
 
 
@@ -131,13 +131,34 @@ def submit_command(
         estimate = manifest["cost_estimate"]["estimated_usd"]
         mode = manifest.get("execution", "batch")
         if mode == "sync":
-            console.print(
-                "[yellow]Resume warning:[/yellow] checkpointed requests are skipped, but an interruption "
-                "after the provider finishes and before the local checkpoint is saved can rerun one "
-                "unrecorded request and incur duplicate cost. Recorded API errors are not rerun "
-                "automatically; inspect outputs/failures.jsonl and use retry. A partial checkpoint line "
-                "stops resume for manual review."
-            )
+            existing_state = load_state(run_dir)
+            if existing_state.get("status") in {"completed", "completed_with_failures"}:
+                total = manifest["request_count"]
+                console.print(
+                    f"No action: {total} of {total} synchronous requests already finished "
+                    f"(status: {existing_state['status']}). No API requests were run and no new run was created."
+                )
+                if existing_state["status"] == "completed_with_failures":
+                    console.print(
+                        "[yellow]Recorded failures remain in outputs/failures.jsonl; use "
+                        "`kllm-batch retry .` to prepare a retry.[/yellow]"
+                    )
+                return
+            progress = sync_checkpoint_progress(run_dir)
+            if progress["checkpointed"]:
+                console.print(
+                    f"Resuming partial synchronous run: {progress['checkpointed']} of {progress['total']} "
+                    f"requests are checkpointed and will be skipped; {progress['remaining']} remain."
+                )
+                console.print(
+                    "[yellow]Warning:[/yellow] an API response received immediately before an interruption "
+                    "may lack a checkpoint, so one unrecorded request could run again and incur duplicate cost."
+                )
+                if progress["recorded_failures"]:
+                    console.print(
+                        f"[yellow]{progress['recorded_failures']} checkpointed API/request failure(s) will "
+                        "not be rerun automatically; use `kllm-batch retry` after processing.[/yellow]"
+                    )
         if not yes and not typer.confirm(f"Execute {manifest['request_count']} {mode} request(s) with estimated maximum cost ${estimate:.4f}?"):
             raise typer.Abort()
         state = submit_run(run_dir)
