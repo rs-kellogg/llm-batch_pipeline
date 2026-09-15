@@ -25,7 +25,8 @@ evaluation:
 
 Prepare the selection with
 `kllm-batch prepare -c project.yaml --provider openai --sample-size 40`, inspect
-its saved records and rendered prompts, and then use `kllm-batch submit RUN_ID`.
+`REVIEW.md` and the rendered prompts inside its exact provider requests, and
+then use `kllm-batch submit RUN_ID`.
 The configured `evaluation.random_seed` is used when `--seed` is omitted. The
 run reports exact-match accuracy for configured fields. The pilot-and-impute
 workflow is deliberately not automatic: inspect class balance, errors, and

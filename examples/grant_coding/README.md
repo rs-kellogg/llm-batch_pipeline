@@ -131,19 +131,22 @@ records `purpose: pilot` and defaults to `execution: sync`. Inspect these files
 before approving model usage:
 
 - `REVIEW.md`: the starting point, with the selection, provider, model,
-  execution mode, request count, estimated cost, and next command.
-- `requests/rendered_prompts.jsonl`: readable system and fully rendered user
-  prompts for every request, including exactly the records substituted into
-  `${records_json}`.
-- `requests/segment_*.jsonl`: the exact provider-native payloads that will run.
+  execution mode, request count, estimated cost, prompt-inspection command, and
+  next command.
+- `requests/segment_*.jsonl`: the exact provider-native payloads that will run,
+  including every fully rendered prompt and the records substituted into
+  `${records_json}`. For OpenAI, inspect `body.instructions` and `body.input`;
+  for Anthropic, inspect `params.system` and `params.messages[].content`.
 - `snapshot/schema.json` and `manifest.json`: the enforced response contract,
   hashes, deterministic seed, selected IDs, execution mode, and cost estimate.
 
-The package also retains `internal/canonical_input.parquet` for preserved-column
+`REVIEW.md` includes an appropriate `jq` command for printing all system and
+user prompts from the segment files. The package also retains
+`internal/canonical_input.parquet` for preserved-column
 joins, retries, and audits, plus `internal/request_map.jsonl` for matching API
 requests back to record IDs. Researchers normally do not need to inspect these
-two files. The redundant canonical CSV and separate model-record JSONL are not
-created.
+two files. The redundant canonical CSV, model-record JSONL, and separate
+rendered-prompt JSONL are not created.
 
 After reviewing those artifacts, run those exact saved requests:
 

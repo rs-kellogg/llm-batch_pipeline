@@ -91,8 +91,8 @@ def prepare_command(
 
     Full run: `kllm-batch prepare -c project.yaml --provider openai`.
     Pilot: add `--sample-size 20 --seed 42`; or use `--ids-file IDs.txt`.
-    Preparation is local and free. Start with REVIEW.md, then inspect the
-    rendered prompts and exact provider JSONL before submitting.
+    Preparation is local and free. Start with REVIEW.md, then inspect the exact
+    provider JSONL—including its rendered prompts—before submitting.
     """
     try:
         run_dir = prepare_run(

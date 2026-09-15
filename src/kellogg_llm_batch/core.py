@@ -191,9 +191,6 @@ def prepare_run(
         canonical_rows.append({"record_id": record.record_id, "source_row": record.source_row, **record.sent, **record.preserved, "_kllm_source_row_sha256": source_row_sha256, "_kllm_truncated_fields": json.dumps(record.truncated_fields, sort_keys=True)})
     canonical_df = pd.DataFrame(canonical_rows)
     canonical_df.to_parquet(run_dir / "internal" / "canonical_input.parquet", index=False)
-    with (run_dir / "requests" / "rendered_prompts.jsonl").open("w", encoding="utf-8") as handle:
-        for request in canonical:
-            handle.write(json.dumps(request.model_dump(), ensure_ascii=False) + "\n")
 
     gold_labels_path = None
     if config.evaluation.gold_columns:
@@ -300,6 +297,12 @@ def _package_versions() -> dict[str, str | None]:
 def _write_review(run_dir: Path, final_run_dir: Path, manifest: dict[str, Any], records: list[Any]) -> None:
     estimate = manifest["cost_estimate"]["estimated_usd"]
     selection = manifest["selection"]
+    if manifest["provider"] == "openai":
+        prompt_locations = "`body.instructions` (system prompt) and `body.input` (user prompt)"
+        inspection_command = "jq -r '.body.instructions, .body.input' requests/segment_*.jsonl"
+    else:
+        prompt_locations = "`params.system` (system prompt) and `params.messages[].content` (user prompt)"
+        inspection_command = "jq -r '.params.system, .params.messages[].content' requests/segment_*.jsonl"
     lines = [
         "# Review before submission",
         "",
@@ -314,9 +317,15 @@ def _write_review(run_dir: Path, final_run_dir: Path, manifest: dict[str, Any], 
         "",
         "## What to inspect",
         "",
-        "1. `requests/rendered_prompts.jsonl` contains the readable system and fully rendered user prompt for every request.",
-        "2. `requests/segment_*.jsonl` contains the exact provider-native payloads that will be executed.",
-        "3. `manifest.json` records selection, hashes, model, pricing, and environment provenance.",
+        f"1. `requests/segment_*.jsonl` contains the exact provider-native payloads that will be executed. The prompts are at {prompt_locations}.",
+        "2. `manifest.json` records selection, hashes, model, pricing, and environment provenance.",
+        "",
+        "To print every rendered system and user prompt (requires `jq`):",
+        "",
+        "```bash",
+        f"cd {shlex.quote(str(final_run_dir))}",
+        inspection_command,
+        "```",
         "",
         "Files under `internal/` and `snapshot/` support joins, retries, validation, and reproducibility; they normally do not need manual review.",
     ]

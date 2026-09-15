@@ -51,7 +51,9 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     }
     assert not (run / "requests" / "canonical_input.csv").exists()
     assert not (run / "requests" / "model_records.jsonl").exists()
+    assert not (run / "requests" / "rendered_prompts.jsonl").exists()
     assert "What to inspect" in (run / "REVIEW.md").read_text(encoding="utf-8")
+    assert "body.instructions" in (run / "REVIEW.md").read_text(encoding="utf-8")
     assert len(list((run / "requests").glob("segment_*.jsonl"))) == 1
     submit_run(run, fake)
     submit_run(run, fake)
@@ -126,11 +128,11 @@ def test_prepare_sample_then_submit_sync_uses_exact_saved_requests(example_confi
     assert manifest["cost_estimate"]["execution"] == "sync"
     assert manifest["selection"] == {"method": "random", "selected_count": 4, "seed": 17}
     assert manifest["selected_rows"] == 4
-    rendered = [json.loads(line) for line in (run / "requests" / "rendered_prompts.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert '"record_id"' in rendered[0]["user_prompt"]
+    payloads = [json.loads(line) for line in (run / "requests" / "segment_0000.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert '"record_id"' in payloads[0]["body"]["input"]
     for logical_name in raw["input"]["fields_sent"]:
-        assert f'"{logical_name}"' in rendered[0]["user_prompt"]
-    assert "investigator" not in rendered[0]["user_prompt"]
+        assert f'"{logical_name}"' in payloads[0]["body"]["input"]
+    assert "investigator" not in payloads[0]["body"]["input"]
 
     state = submit_run(run, fake)
     assert state["status"] == "completed"
@@ -154,8 +156,8 @@ def test_prepare_with_explicit_ids_and_request_integrity(example_config, tmp_pat
     selected = pd.read_parquet(run / "internal" / "canonical_input.parquet")
     assert selected["record_id"].tolist() == ["GRANT-002", "GRANT-007"]
 
-    prompts = run / "requests" / "rendered_prompts.jsonl"
-    prompts.write_text(prompts.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    requests = run / "requests" / "segment_0000.jsonl"
+    requests.write_text(requests.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="artifact changed"):
         submit_run(run, fake)
 

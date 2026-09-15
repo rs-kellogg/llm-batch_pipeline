@@ -259,7 +259,7 @@ kllm-batch prepare \
   --sample-size 4 \
   --seed 42
 
-# Inspect the generated records, rendered prompts, and exact provider payload.
+# Inspect REVIEW.md and the exact provider payload containing each rendered prompt.
 kllm-batch submit PILOT_RUN_ID
 
 kllm-batch prepare \
@@ -306,15 +306,17 @@ Each run directory contains:
 - `manifest.json`: immutable configuration, source, prompt, schema, package version, and environment snapshot.
 - `state.json`: compact mutable segment/job state.
 - `state.previous.json`: last valid state for recovery.
-- `requests/`: readable rendered prompts and exact provider-native JSONL requests.
+- `requests/`: exact provider-native JSONL requests, including the rendered prompts.
 - `internal/`: one canonical Parquet input snapshot and one request-to-source-row JSONL map.
 - `snapshot/`: the project configuration, schema, prompt templates, and context used for the run.
 - `raw/`: immutable provider responses and errors, created when responses are retrieved.
 - `results/`: normalized Parquet and optional CSV results, created during processing.
 - `reports/`: cost, audit, comparison, and provenance reports, created during processing.
 
-Do not duplicate the canonical input as CSV or write a separate model-record
-file: the readable rendered prompts already contain the model-facing records.
+Do not duplicate the canonical input as CSV or write separate model-record or
+rendered-prompt files: the provider requests already contain the fully rendered
+prompts and model-facing records. `REVIEW.md` documents their provider-specific
+locations and a command for printing them.
 
 Write state through a same-directory temporary file followed by atomic replacement. Use a run lock to prevent simultaneous local mutation. Keep per-row state in JSONL or Parquet rather than the compact JSON state.
 
