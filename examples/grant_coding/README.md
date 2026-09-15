@@ -222,7 +222,12 @@ Immediately after `prepare`, a run contains `REVIEW.md`, `manifest.json`,
 `state.json`, `requests/`, `internal/`, and `snapshot/`. The `raw/` directory is
 created when provider responses are retrieved; `results/` and `reports/` are
 created when processing begins. Raw responses and earlier attempts are never
-patched or deleted. See `expected/result_columns.md` for normalized columns.
+patched or deleted. Successful processing writes both `results/results.csv`
+for quick inspection and `results/results.parquet` for type-stable analysis. A
+`results/failures.jsonl` file is created only when failures occur. Essential
+row provenance is stored directly in these result and failure rows; shared
+prompt, schema, configuration, and environment provenance remains in
+`manifest.json`. See `expected/result_columns.md` for normalized columns.
 
 ## 12. Cost boundary
 

@@ -25,7 +25,7 @@ from .prompts import load_context, load_prompt_files, render_user_prompt
 from .providers.base import ProviderAdapter, get_provider
 from .schema import load_row_schema, wrapped_schema
 from .state import load_state, resolve_run, save_state
-from .utils import RunLock, atomic_write_json, sha256_file, sha256_text, utc_now
+from .utils import RunLock, atomic_write_json, json_default, sha256_file, sha256_text, utc_now
 from .validation import validate_project
 
 
@@ -510,7 +510,6 @@ def _process_downloads(run_dir: Path, adapter: ProviderAdapter) -> None:
         canonical_by_id = {str(row["record_id"]): row.to_dict() for _, row in canonical.iterrows()}
         results: list[dict[str, Any]] = []
         failures: list[dict[str, Any]] = []
-        provenance: list[dict[str, Any]] = []
         usage_by_request: dict[str, dict[str, Any]] = {}
         for segment in state["segments"]:
             if segment["status"] not in {"downloaded", "processed"}:
@@ -537,7 +536,7 @@ def _process_downloads(run_dir: Path, adapter: ProviderAdapter) -> None:
                         else adapter.normalize_line(raw_item)
                     )
                     seen_requests.add(normalized.custom_id)
-                    usage_by_request[normalized.custom_id] = {"custom_id": normalized.custom_id, "batch_id": segment["remote_batch_id"], "input_tokens": normalized.input_tokens, "output_tokens": normalized.output_tokens, "status": normalized.status}
+                    usage_by_request[normalized.custom_id] = {"custom_id": normalized.custom_id, "batch_id": segment["remote_batch_id"], "model_returned": normalized.model, "input_tokens": normalized.input_tokens, "output_tokens": normalized.output_tokens, "status": normalized.status}
                     expected = mapping.get(normalized.custom_id, [])
                     if normalized.status != "succeeded":
                         for record_id in expected:
@@ -575,37 +574,30 @@ def _process_downloads(run_dir: Path, adapter: ProviderAdapter) -> None:
                                 failures.append(_failure(record_id, normalized.custom_id, "missing_output", "no valid result returned"))
                             continue
                         source = canonical_by_id[record_id]
-                        row = {**source, **valid_by_id[record_id], "provider": manifest["provider"], "model_requested": manifest["model_requested"], "model_returned": normalized.model, "run_id": manifest["run_id"], "custom_id": normalized.custom_id}
+                        row_provenance = _row_provenance(manifest, source, normalized.custom_id, segment["remote_batch_id"], normalized.model, normalized.input_tokens, normalized.output_tokens, "valid")
+                        row = {**source, **valid_by_id[record_id], **row_provenance}
                         results.append(row)
-                        provenance.append(_row_provenance(manifest, source, normalized.custom_id, segment["remote_batch_id"], normalized.model, normalized.input_tokens, normalized.output_tokens, "valid"))
             for custom_id, expected in mapping.items():
                 if custom_id not in seen_requests:
                     for record_id in expected:
                         failures.append(_failure(record_id, custom_id, "missing_request_output", "provider returned no line for request"))
             segment["status"] = "processed"
-        valid_ids = {str(row["record_id"]) for row in results}
-        failure_categories: dict[str, set[str]] = {}
-        failure_custom_ids: dict[str, str] = {}
-        for failure in failures:
-            record_id = str(failure["record_id"])
-            if record_id in canonical_by_id and record_id not in valid_ids:
-                failure_categories.setdefault(record_id, set()).add(str(failure["category"]))
-                failure_custom_ids.setdefault(record_id, str(failure["custom_id"]))
         batch_by_custom_id = {
             custom_id: segment["remote_batch_id"]
             for segment in state["segments"]
             for custom_id in _mapping_custom_ids(run_dir / segment["mapping_file"], segment["index"])
         }
-        for record_id, categories in failure_categories.items():
-            custom_id = failure_custom_ids[record_id]
+        enriched_failures = []
+        for failure in failures:
+            record_id = str(failure["record_id"])
+            custom_id = str(failure["custom_id"])
             request_usage = usage_by_request.get(custom_id, {}) or {}
-            failure_row = _row_provenance(manifest, canonical_by_id[record_id], custom_id, batch_by_custom_id.get(custom_id), None, int(request_usage.get("input_tokens", 0)), int(request_usage.get("output_tokens", 0)), "invalid")
-            failure_row["error_categories"] = sorted(categories)
-            provenance.append(failure_row)
+            source = canonical_by_id.get(record_id, {"record_id": record_id, "source_row": None})
+            row_provenance = _row_provenance(manifest, source, custom_id, batch_by_custom_id.get(custom_id), request_usage.get("model_returned"), int(request_usage.get("input_tokens", 0)), int(request_usage.get("output_tokens", 0)), "invalid")
+            enriched_failures.append({**failure, **row_provenance})
         output_options = manifest["output_options"]
-        _write_table_outputs(run_dir, "results", results, output_options)
-        _write_table_outputs(run_dir, "failures", failures, output_options)
-        atomic_write_json(run_dir / "results" / "provenance.json", {"run_id": manifest["run_id"], "rows": provenance})
+        _write_result_outputs(run_dir, results, output_options)
+        _write_failures(run_dir, enriched_failures)
         atomic_write_json(run_dir / "reports" / "usage.json", {"requests": list(usage_by_request.values()), "input_tokens": sum(item["input_tokens"] for item in usage_by_request.values()), "output_tokens": sum(item["output_tokens"] for item in usage_by_request.values())})
         unfinished = any(segment["status"] in {"prepared", "submitted", "running", "completed", "downloaded"} for segment in state["segments"])
         state["status"] = "running" if unfinished else "completed_with_failures" if failures else "completed"
@@ -652,43 +644,39 @@ def _row_provenance(
     return {
         "record_id": str(source["record_id"]),
         "source_row": source_row,
-        "source_row_sha256": source.get("_kllm_source_row_sha256"),
-        "source_sha256": manifest["source_sha256"],
+        "_kllm_source_row_sha256": source.get("_kllm_source_row_sha256"),
+        "_kllm_truncated_fields": source.get("_kllm_truncated_fields", "{}"),
         "run_id": manifest["run_id"],
         "parent_run": manifest.get("parent_run"),
         "provider": manifest["provider"],
         "model_requested": manifest["model_requested"],
         "model_returned": model_returned,
-        "provider_options": manifest.get("provider_options", {}),
         "prompt_version": manifest["prompt_version"],
-        "system_prompt_sha256": manifest["system_prompt_sha256"],
-        "user_prompt_sha256": manifest["user_prompt_sha256"],
-        "schema_sha256": manifest["schema_sha256"],
-        "config_sha256": manifest.get("config_sha256"),
         "custom_id": custom_id,
         "batch_id": batch_id,
-        "run_created_at": manifest["created_at"],
         "validated_at": utc_now(),
         "input_tokens_request": input_tokens,
         "output_tokens_request": output_tokens,
         "actual_request_cost_usd": actual_cost,
-        "estimated_run_cost_usd": estimate.get("estimated_usd"),
-        "truncated_fields": source.get("_kllm_truncated_fields", "{}"),
         "validation_status": validation_status,
     }
 
 
-def _write_table_outputs(run_dir: Path, stem: str, rows: list[dict[str, Any]], output_options: dict[str, Any]) -> None:
+def _write_result_outputs(run_dir: Path, rows: list[dict[str, Any]], output_options: dict[str, Any]) -> None:
     (run_dir / "results").mkdir(exist_ok=True)
-    default_columns = {
-        "results": ["record_id", "source_row"],
-        "failures": ["record_id", "custom_id", "category", "message"],
-    }
-    frame = pd.DataFrame(rows, columns=None if rows else default_columns.get(stem))
+    frame = pd.DataFrame(rows, columns=None if rows else ["record_id", "source_row"])
     if output_options["write_parquet"]:
-        frame.to_parquet(run_dir / "results" / f"{stem}.parquet", index=False)
+        frame.to_parquet(run_dir / "results" / "results.parquet", index=False)
     if output_options["write_csv"]:
-        frame.to_csv(run_dir / "results" / f"{stem}.csv", index=False)
+        frame.to_csv(run_dir / "results" / "results.csv", index=False)
+
+
+def _write_failures(run_dir: Path, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    with (run_dir / "results" / "failures.jsonl").open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False, default=json_default) + "\n")
 
 
 def _write_run_summary(run_dir: Path, audit: dict[str, Any]) -> None:
@@ -701,7 +689,7 @@ def _write_run_summary(run_dir: Path, audit: dict[str, Any]) -> None:
     if cost.get("input_price_per_million") is not None and cost.get("output_price_per_million") is not None:
         actual_usd = usage["input_tokens"] / 1_000_000 * cost["input_price_per_million"] + usage["output_tokens"] / 1_000_000 * cost["output_price_per_million"]
     evaluation_metrics = _evaluation_metrics(run_dir, manifest)
-    summary = {"run_id": manifest["run_id"], "generated_at": utc_now(), "project": manifest["project"], "purpose": manifest.get("purpose", "production"), "execution": manifest.get("execution", "batch"), "selection": manifest.get("selection", {"method": "all"}), "provider": manifest["provider"], "model_requested": manifest["model_requested"], "source_path": manifest["source_path"], "source_sha256": manifest["source_sha256"], "prompt_version": manifest["prompt_version"], "expected_records": audit["expected_records"], "valid_records": audit["valid_records"], "missing_records": len(audit["missing_record_ids"]), "input_tokens": usage["input_tokens"], "output_tokens": usage["output_tokens"], "estimated_maximum_usd": cost["estimated_usd"], "actual_usage_cost_usd": actual_usd, "pricing_as_of": cost.get("pricing_as_of"), "evaluation_metrics": evaluation_metrics, "results_path": str(run_dir / "results" / "results.parquet")}
+    summary = {"run_id": manifest["run_id"], "generated_at": utc_now(), "project": manifest["project"], "purpose": manifest.get("purpose", "production"), "execution": manifest.get("execution", "batch"), "selection": manifest.get("selection", {"method": "all"}), "provider": manifest["provider"], "model_requested": manifest["model_requested"], "source_path": manifest["source_path"], "source_sha256": manifest["source_sha256"], "prompt_version": manifest["prompt_version"], "expected_records": audit["expected_records"], "valid_records": audit["valid_records"], "missing_records": len(audit["missing_record_ids"]), "input_tokens": usage["input_tokens"], "output_tokens": usage["output_tokens"], "estimated_maximum_usd": cost["estimated_usd"], "actual_usage_cost_usd": actual_usd, "pricing_as_of": cost.get("pricing_as_of"), "evaluation_metrics": evaluation_metrics, "results_parquet": str(run_dir / "results" / "results.parquet"), "results_csv": str(run_dir / "results" / "results.csv"), "failures_jsonl": str(run_dir / "results" / "failures.jsonl") if (run_dir / "results" / "failures.jsonl").exists() else None}
     atomic_write_json(run_dir / "reports" / "run_summary.json", summary)
     (run_dir / "reports" / "run_summary.md").write_text("# Run summary\n\n" + "\n".join(f"- **{key}**: {value}" for key, value in summary.items()) + "\n", encoding="utf-8")
 
@@ -758,10 +746,14 @@ def audit_run(run: str | Path) -> dict[str, Any]:
 
 def prepare_retry(run: str | Path) -> Path:
     run_dir = resolve_run(run)
-    failures_path = run_dir / "results" / "failures.parquet"
-    if not failures_path.exists():
-        raise FileNotFoundError("No failures.parquet exists; sync and audit the run first")
-    failures = pd.read_parquet(failures_path)
+    failures_jsonl = run_dir / "results" / "failures.jsonl"
+    legacy_parquet = run_dir / "results" / "failures.parquet"
+    if failures_jsonl.exists():
+        failures = pd.DataFrame(ProviderAdapter.read_jsonl(failures_jsonl))
+    elif legacy_parquet.exists():
+        failures = pd.read_parquet(legacy_parquet)
+    else:
+        raise FileNotFoundError("No failures were recorded; sync and audit the run first")
     if failures.empty:
         raise ValueError("The run has no failed records to retry")
     retryable = {"errored", "expired", "cancelled", "unknown", "malformed_output", "schema_violation", "missing_output", "missing_request_output", "duplicate_output_id"}

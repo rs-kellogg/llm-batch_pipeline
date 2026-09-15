@@ -41,7 +41,7 @@ def test_prepare_300000_rows_with_compact_state(example_config, tmp_path, monkey
     raw["providers"]["openai"]["input_price_per_million"] = 0
     raw["providers"]["openai"]["output_price_per_million"] = 0
     raw["output"]["runs_directory"] = str(tmp_path / "runs")
-    raw["output"]["write_csv"] = False
+    raw["output"]["write_csv"] = True
     config = tmp_path / "large-project.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
 

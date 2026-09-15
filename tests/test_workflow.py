@@ -65,12 +65,28 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     results = pd.read_parquet(run / "results" / "results.parquet")
     assert len(results) == 10
     assert results["record_id"].is_unique
+    assert (run / "results" / "results.csv").exists()
+    assert not (run / "results" / "failures.jsonl").exists()
+    assert not (run / "results" / "failures.parquet").exists()
+    assert not (run / "results" / "failures.csv").exists()
+    assert not (run / "results" / "provenance.json").exists()
+    for column in (
+        "run_id",
+        "provider",
+        "model_requested",
+        "model_returned",
+        "prompt_version",
+        "custom_id",
+        "batch_id",
+        "validation_status",
+        "input_tokens_request",
+        "output_tokens_request",
+        "actual_request_cost_usd",
+    ):
+        assert column in results
+    assert set(results["validation_status"]) == {"valid"}
+    assert results["_kllm_source_row_sha256"].notna().all()
     assert audit_run(run)["complete"] is True
-    provenance = json.loads((run / "results" / "provenance.json").read_text())
-    assert len(provenance["rows"]) == 10
-    assert provenance["rows"][0]["source_row_sha256"]
-    assert provenance["rows"][0]["config_sha256"]
-    assert provenance["rows"][0]["validation_status"] == "valid"
     assert load_state(run)["stage"] == "audited"
 
 
@@ -231,8 +247,16 @@ def test_manual_retry_contains_only_failed_rows(example_config, tmp_path, monkey
     run = prepare_run(config, "openai")
     submit_run(run, fake)
     sync_run(run, adapter=fake)
-    failures = pd.read_parquet(run / "results" / "failures.parquet")
+    failures = pd.DataFrame(
+        json.loads(line)
+        for line in (run / "results" / "failures.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    )
     assert len(set(failures["record_id"])) == 1
+    assert set(failures["validation_status"]) == {"invalid"}
+    assert failures["_kllm_source_row_sha256"].notna().all()
+    assert not (run / "results" / "failures.parquet").exists()
+    assert not (run / "results" / "failures.csv").exists()
     child = prepare_retry(run)
     child_input = pd.read_parquet(child / "internal" / "canonical_input.parquet")
     assert len(child_input) == 1

@@ -118,7 +118,7 @@ class BudgetSection(StrictModel):
 
 class OutputSection(StrictModel):
     write_parquet: Literal[True] = True
-    write_csv: bool = True
+    write_csv: Literal[True] = True
     runs_directory: Path = Path("runs")
 
 

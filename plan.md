@@ -13,7 +13,8 @@ repository; this shorter file is its implementation index.
 - Provide validate, prepare, submit, status, sync, cancel, audit, retry, merge,
   and cross-provider compare commands. Pilot testing uses `prepare` record
   selection and the same `submit` lifecycle as a full run.
-- Record source, prompt, schema, model, environment, cost, and row provenance.
+- Record essential provenance in each result or failure row and shared source,
+  prompt, schema, model, environment, and pricing metadata once in the manifest.
 - Keep the prepared-run review surface small: lead with `REVIEW.md`, retain only
   the exact provider requests containing the rendered prompts, and place the
   single canonical Parquet snapshot and request map under `internal/`.

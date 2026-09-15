@@ -310,8 +310,8 @@ Each run directory contains:
 - `internal/`: one canonical Parquet input snapshot and one request-to-source-row JSONL map.
 - `snapshot/`: the project configuration, schema, prompt templates, and context used for the run.
 - `raw/`: immutable provider responses and errors, created when responses are retrieved.
-- `results/`: normalized Parquet and optional CSV results, created during processing.
-- `reports/`: cost, audit, comparison, and provenance reports, created during processing.
+- `results/`: normalized CSV and Parquet results plus conditional failure JSONL, created during processing.
+- `reports/`: cost, audit, and comparison reports, created during processing.
 
 Do not duplicate the canonical input as CSV or write separate model-record or
 rendered-prompt files: the provider requests already contain the fully rendered
@@ -345,8 +345,8 @@ Every command includes examples, defaults, accepted states, credential requireme
 - Classify failures as transient, expired/cancelled, malformed, incomplete, permanent request/configuration error, or unknown.
 - Never patch or delete earlier attempts; retries create linked child attempts.
 - Make submission idempotent so repeated commands cannot silently create duplicate remote jobs.
-- Record per-row provenance: run and attempt IDs, source ID/row/checksum, provider, requested and returned model, prompt version/hash, schema/config hashes, request and batch IDs, timestamps, parameters, token usage, estimated/actual cost, truncation status, validation status, and error category.
-- Produce `provenance.json`, `run_summary.json`, `run_summary.md`, `results.parquet`, optional `results.csv`, and separate failure/disagreement tables.
+- Record essential per-row provenance directly in results and failure rows: run and attempt IDs, source ID/row checksum, provider, requested and returned model, prompt version, request and batch IDs, validation timestamp, token usage, actual request cost, truncation status, validation status, and error category. Keep shared prompt/schema/config hashes, parameters, source checksum, pricing, and environment metadata once in `manifest.json`.
+- Produce both `results.parquet` and `results.csv`, plus `failures.jsonl` only when failures occur. Do not create a separate per-row provenance file.
 - Maintain a dated pricing registry with project-level overrides. Unknown pricing blocks submission unless explicitly acknowledged.
 - Enforce `max_estimated_cost` and require a new estimate and confirmation for retries.
 
