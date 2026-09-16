@@ -86,6 +86,8 @@ def gui_command(
         "false",
         "--server.fileWatcherType",
         "none",
+        "--theme.base",
+        "light",
     ]
     try:
         completed = subprocess.run(command, env=environment, check=False)

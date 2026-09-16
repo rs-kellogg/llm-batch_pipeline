@@ -37,6 +37,8 @@ def test_gui_command_launches_local_streamlit(tmp_path, monkeypatch):
     assert "8765" in captured["command"]
     assert "--server.headless" in captured["command"]
     assert captured["command"][captured["command"].index("--server.headless") + 1] == "true"
+    assert "--theme.base" in captured["command"]
+    assert captured["command"][captured["command"].index("--theme.base") + 1] == "light"
 
 
 def test_gui_command_explains_missing_optional_dependency(monkeypatch):

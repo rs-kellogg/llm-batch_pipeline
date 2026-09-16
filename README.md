@@ -29,7 +29,8 @@ kllm-batch gui my-project
 The GUI binds only to `127.0.0.1`, makes no provider calls, and requires no API
 credentials. It writes the same YAML, JSON schema, and prompt files used by the
 CLI. Add `--no-browser` for a headless launch or `--port PORT` to select a
-different local port.
+different local port. The launcher configures Streamlit to use its light base
+theme, independent of the operating system's light/dark preference.
 
 API credentials are read from the environment:
 
