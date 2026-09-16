@@ -196,18 +196,33 @@ Preparation is local. It validates again and prints a run directory such as `exa
 
 ## 7. Submit, monitor, download, and audit
 
+For a normal batch run, the required workflow is:
+
 ```bash
 kllm-batch submit RUN_ID
-kllm-batch status RUN_ID
 kllm-batch sync RUN_ID --watch
+```
+
+`submit` displays the recorded estimate and asks for confirmation. `sync`
+with `--watch` polls the provider until the batch is finished, downloads
+immutable raw JSONL, validates row-level outputs, writes normalized results,
+and runs the completeness audit automatically.
+
+These diagnostic commands are optional for a batch run:
+
+```bash
+# Show a one-time provider-status snapshot before or during sync
+kllm-batch status RUN_ID
+
+# Recompute and print the local completeness audit after sync
 kllm-batch audit RUN_ID
 ```
 
-These commands contact the provider; completed requests incur provider charges.
-`submit` displays the recorded estimate and asks for confirmation. `sync`
-downloads immutable raw JSONL, validates row-level outputs, writes normalized
-results, and runs the audit automatically. The final explicit `audit` command
-is optional; use it when you want to rerun or inspect the completeness check.
+`status` is unnecessary when using `sync --watch`, because `sync` already
+polls status. The explicit `audit` is also unnecessary for normal processing,
+because `sync` runs it automatically. Use these commands when you want a
+one-time progress check or need to display/recompute the audit later. `submit`,
+`status`, and `sync` contact the provider; `audit` is local and free.
 
 ## 8. Retry failures manually
 
@@ -257,10 +272,12 @@ kllm-batch prepare -c examples/grant_coding/project.yaml --provider anthropic --
 kllm-batch submit ANTHROPIC_PILOT_RUN_ID
 kllm-batch prepare -c examples/grant_coding/project.yaml --provider anthropic
 kllm-batch submit ANTHROPIC_RUN_ID
-kllm-batch status ANTHROPIC_RUN_ID
 kllm-batch sync ANTHROPIC_RUN_ID --watch
-kllm-batch audit ANTHROPIC_RUN_ID
 ```
+
+As with OpenAI batch runs, `status ANTHROPIC_RUN_ID` and
+`audit ANTHROPIC_RUN_ID` are optional diagnostics; `sync --watch` already
+polls status, processes the responses, and runs the audit.
 
 ## 10. Compare providers
 
