@@ -70,6 +70,10 @@ not already checkpointed.
 One input row represents one research unit. `fields_sent` controls what providers receive; `columns_preserved` is carried to results locally. Duplicate IDs and exact duplicate model inputs are blocking errors.
 
 `schema.json` describes one result row. For portability across both providers, every object sets `additionalProperties: false`, every property is required, and optional values use a nullable type such as `["string", "null"]`. The package adds `record_id` and the outer `results` array.
+The Anthropic adapter converts nullable type arrays to equivalent `anyOf`
+branches in the provider payload. It also expresses unsupported numeric and
+length bounds as schema descriptions. The original project schema remains
+unchanged and is enforced during local post-response validation.
 
 ## Safety and reproducibility
 

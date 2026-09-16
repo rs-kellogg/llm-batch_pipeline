@@ -20,6 +20,39 @@ def test_anthropic_payload_uses_output_config():
     assert payload["params"]["messages"][0]["content"] == "user"
 
 
+def test_anthropic_payload_converts_nullable_enum_and_unsupported_bounds():
+    schema = {
+        "type": "object",
+        "properties": {
+            "secondary_label": {
+                "type": ["string", "null"],
+                "enum": ["financial", "other", None],
+            },
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        },
+        "required": ["secondary_label", "confidence"],
+        "additionalProperties": False,
+    }
+    payload = AnthropicAdapter(client=object()).build_payload(
+        "request_1", "claude-haiku-4-5", "system", "user", schema, 100, {}
+    )
+    provider_schema = payload["params"]["output_config"]["format"]["schema"]
+
+    assert provider_schema["properties"]["secondary_label"] == {
+        "anyOf": [
+            {"type": "string", "enum": ["financial", "other"]},
+            {"type": "null", "enum": [None]},
+        ]
+    }
+    confidence = provider_schema["properties"]["confidence"]
+    assert "minimum" not in confidence
+    assert "maximum" not in confidence
+    assert "greater than or equal to 0" in confidence["description"]
+    assert "less than or equal to 1" in confidence["description"]
+    assert schema["properties"]["secondary_label"]["type"] == ["string", "null"]
+    assert schema["properties"]["confidence"]["minimum"] == 0
+
+
 def test_anthropic_ended_batch_is_downloadable_even_when_all_rows_failed():
     class EndedClient:
         class Messages:

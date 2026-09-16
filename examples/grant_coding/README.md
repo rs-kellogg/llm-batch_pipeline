@@ -140,6 +140,11 @@ before approving model usage:
 - `project_snapshot/schema.json` and `manifest.json`: the enforced response contract,
   hashes, deterministic seed, selected IDs, execution mode, and cost estimate.
 
+For Anthropic, the exact request payload may represent nullable type arrays as
+equivalent `anyOf` branches and move unsupported numeric bounds into field
+descriptions. The unchanged `project_snapshot/schema.json` is still used for
+strict local validation, including the confidence range.
+
 `REVIEW.md` includes an appropriate `jq` command for printing all system and
 user prompts from the segment files. The package also retains
 `input_snapshot/canonical_input.parquet` for preserved-column
