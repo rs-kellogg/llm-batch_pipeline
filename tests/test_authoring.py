@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+import yaml
 
 import kellogg_llm_batch.core as core
 from kellogg_llm_batch.authoring import (
@@ -106,6 +107,21 @@ def test_preview_save_validate_and_reopen_preserves_settings(example_config, tmp
     assert reopened.codebook_source == draft.project_dir / "context" / "codebook.csv"
 
 
+def test_uploaded_input_is_copied_into_project_data(example_config, tmp_path):
+    draft = _configured_draft(example_config, tmp_path)
+    uploaded = tmp_path / "selected-grants.csv"
+    uploaded.write_bytes((example_config.parent / "data" / "grants.csv").read_bytes())
+    draft.input_upload_source = uploaded
+    draft.config["input"]["path"] = str(uploaded)
+
+    result = save_project_draft(draft)
+    saved_config = yaml.safe_load(result.project_file.read_text(encoding="utf-8"))
+
+    assert saved_config["input"]["path"] == "data/selected-grants.csv"
+    assert (draft.project_dir / "data" / "selected-grants.csv").read_bytes() == uploaded.read_bytes()
+    assert draft.input_upload_source is None
+
+
 def test_gui_generated_project_prepares_with_existing_pipeline(example_config, tmp_path, monkeypatch):
     draft = _configured_draft(example_config, tmp_path)
     project_file = save_project_draft(draft).project_file
@@ -181,7 +197,27 @@ def test_streamlit_gui_starts_without_api_calls(tmp_path, monkeypatch):
 
     assert not app.exception
     assert app.title[0].value == "Kellogg LLM Batch Project Builder"
+    assert any('font-size: 1rem' in str(block.value) for block in app.markdown)
+    assert any('stWidgetLabel' in str(block.value) for block in app.markdown)
     assert "Save project and validate" in [button.label for button in app.button]
+
+
+def test_streamlit_gui_file_pickers_load_input_and_codebook(tmp_path, monkeypatch):
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+    monkeypatch.setenv("KLLM_GUI_PROJECT_DIR", str(tmp_path / "new-project"))
+    app_path = Path(__file__).parents[1] / "src" / "kellogg_llm_batch" / "gui_app.py"
+    app = streamlit_testing.AppTest.from_file(str(app_path), default_timeout=10).run()
+
+    app.file_uploader[0].set_value(
+        ("records.csv", b"record_id,text\nA,Alpha\nB,Beta\n", "text/csv")
+    ).run()
+    app.file_uploader[1].set_value(
+        ("codebook.csv", b"label,definition\nalpha,First label\n", "text/csv")
+    ).run()
+
+    assert not app.exception
+    assert len(app.dataframe) >= 1
+    assert any("Prompt placeholder" in caption.value for caption in app.caption)
 
 
 def test_streamlit_gui_loads_existing_data_codebook_and_preview(example_config, monkeypatch):

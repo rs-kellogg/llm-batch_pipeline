@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -25,25 +27,81 @@ from kellogg_llm_batch.data import normalize_id
 from kellogg_llm_batch.prompts import load_context_file
 
 
+def _apply_app_styles() -> None:
+    """Keep secondary instructions readable at the larger app scale."""
+    st.markdown(
+        """
+        <style>
+        [data-testid="stCaptionContainer"] p {
+            font-size: 1rem !important;
+            line-height: 1.55 !important;
+        }
+        [data-testid="stWidgetLabel"] p,
+        [data-testid="stWidgetLabel"] label,
+        [data-testid="stFileUploaderDropzone"] span,
+        [data-testid="stFileUploaderDropzone"] small,
+        [data-testid="stExpander"] summary p,
+        .stButton button p {
+            font-size: 1rem !important;
+            line-height: 1.45 !important;
+        }
+        [data-testid="stWidgetLabel"] p,
+        [data-testid="stWidgetLabel"] label {
+            font-weight: 500 !important;
+        }
+        .stTextInput input,
+        .stTextArea textarea,
+        .stNumberInput input,
+        [data-baseweb="select"] {
+            font-size: 1rem !important;
+        }
+        [data-testid="stCode"] code {
+            font-size: 1rem !important;
+            line-height: 1.5 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _resolved_config_path(draft: ProjectDraft, value: str) -> str:
     path = Path(value).expanduser()
     return str(path if path.is_absolute() else (draft.project_dir / path).resolve())
 
 
+def _stage_upload(uploaded: Any, category: str) -> tuple[Path, str]:
+    """Keep a browser upload outside the project until the user saves."""
+    content = uploaded.getvalue()
+    filename = Path(uploaded.name).name
+    signature = f"{filename}:{sha256(content).hexdigest()}"
+    directory = st.session_state.get("upload_staging_directory")
+    if directory is None:
+        directory = tempfile.TemporaryDirectory(prefix="kllm-gui-upload-")
+        st.session_state.upload_staging_directory = directory
+    target = Path(directory.name) / category / filename
+    if st.session_state.get(f"{category}_upload_signature") != signature or not target.is_file():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        st.session_state[f"{category}_upload_signature"] = signature
+    return target, signature
+
+
 def _initialize_draft(draft: ProjectDraft) -> None:
     st.session_state.draft = draft
     st.session_state.project_directory = str(draft.project_dir)
-    st.session_state.input_path = _resolved_config_path(draft, str(draft.config["input"].get("path", ""))) if draft.config["input"].get("path") else ""
-    st.session_state.codebook_path = str(draft.codebook_source or "")
     st.session_state.system_prompt = draft.system_prompt
     st.session_state.user_prompt = draft.user_prompt
     guided = schema_supports_guided_editor(draft.schema)
     st.session_state.schema_mode = "Guided" if guided else "Advanced JSON"
     st.session_state.schema_rows = schema_to_field_rows(draft.schema) if guided else []
     st.session_state.schema_json = json.dumps(draft.schema, indent=2, ensure_ascii=False)
+    st.session_state.upload_widget_generation = st.session_state.get("upload_widget_generation", 0) + 1
     st.session_state.pop("input_frame", None)
     st.session_state.pop("column_rows", None)
     st.session_state.pop("codebook_preview", None)
+    st.session_state.pop("input_upload_processed", None)
+    st.session_state.pop("codebook_upload_processed", None)
 
 
 def _load_or_create_initial_draft() -> None:
@@ -145,13 +203,34 @@ def _project_controls() -> ProjectDraft:
 
 def _input_controls(draft: ProjectDraft) -> None:
     st.subheader("2. Input data and column mapping")
-    path_col, load_col = st.columns([4, 1])
-    path_col.text_input("CSV, Parquet, or JSONL path", key="input_path")
-    if load_col.button("Load input", width="stretch"):
+    configured_path = str(draft.config["input"].get("path", ""))
+    current_path = _resolved_config_path(draft, configured_path) if configured_path else ""
+    if current_path:
+        st.info(f"Current input: {current_path}")
+    uploaded = st.file_uploader(
+        "Choose input data",
+        type=["csv", "parquet", "jsonl"],
+        key=f"input_upload_{st.session_state.upload_widget_generation}",
+        help="The selected file is copied into data/ only when you save the project.",
+    )
+    if uploaded is not None:
         try:
-            frame, fmt = load_input_table(st.session_state.input_path)
-            draft.config["input"]["path"] = str(Path(st.session_state.input_path).expanduser().resolve())
-            draft.config["input"]["format"] = "auto"
+            source, signature = _stage_upload(uploaded, "input")
+            if st.session_state.get("input_upload_processed") != signature:
+                frame, fmt = load_input_table(source)
+                draft.input_upload_source = source
+                draft.config["input"]["path"] = str(source)
+                draft.config["input"]["format"] = "auto"
+                st.session_state.input_frame = frame
+                st.session_state.input_format = fmt
+                st.session_state.column_rows = _column_editor_rows(draft, frame)
+                st.session_state.input_upload_processed = signature
+                st.success(f"Selected {uploaded.name}: {len(frame):,} rows and {len(frame.columns):,} columns.")
+        except Exception as exc:
+            st.error(str(exc))
+    if st.button("Load current project input", disabled=not bool(current_path), width="stretch"):
+        try:
+            frame, fmt = load_input_table(current_path)
             st.session_state.input_frame = frame
             st.session_state.input_format = fmt
             st.session_state.column_rows = _column_editor_rows(draft, frame)
@@ -196,22 +275,26 @@ def _input_controls(draft: ProjectDraft) -> None:
 
 def _codebook_controls(draft: ProjectDraft) -> None:
     st.subheader("3. Codebook")
-    path_col, load_col = st.columns([4, 1])
-    path_col.text_input("Optional codebook path", key="codebook_path")
-    if load_col.button("Load codebook", width="stretch"):
+    current_path = str(draft.codebook_source or "")
+    if current_path:
+        st.info(f"Current codebook: {current_path}")
+    uploaded = st.file_uploader(
+        "Choose an optional codebook",
+        type=["csv", "json", "jsonl", "yaml", "yml", "txt", "md"],
+        key=f"codebook_upload_{st.session_state.upload_widget_generation}",
+        help="The selected file is copied into context/ only when you save the project.",
+    )
+    if uploaded is not None:
         try:
-            source = Path(st.session_state.codebook_path).expanduser().resolve()
-            preview = load_context_file("codebook", source, "auto")
-            draft.codebook_source = source
-            suffix = "_text" if "codebook_text" in preview else "_json"
-            draft.config["prompt"].setdefault("context", {})["codebook"] = {
-                "path": str(source),
-                "format": "auto",
-            }
-            expected = f"${{codebook{suffix}}}"
-            if st.session_state.user_prompt == DEFAULT_USER_PROMPT:
-                st.session_state.user_prompt = f"Apply this codebook:\n\n{expected}\n\n{DEFAULT_USER_PROMPT}"
-            st.session_state.codebook_preview = preview
+            source, signature = _stage_upload(uploaded, "codebook")
+            if st.session_state.get("codebook_upload_processed") != signature:
+                _load_codebook(draft, source)
+                st.session_state.codebook_upload_processed = signature
+        except Exception as exc:
+            st.error(str(exc))
+    if st.button("Load current project codebook", disabled=not bool(current_path), width="stretch"):
+        try:
+            _load_codebook(draft, Path(current_path))
         except Exception as exc:
             st.error(str(exc))
     preview = st.session_state.get("codebook_preview")
@@ -222,6 +305,20 @@ def _codebook_controls(draft: ProjectDraft) -> None:
             st.json(json.loads(value))
         except json.JSONDecodeError:
             st.code(value)
+
+
+def _load_codebook(draft: ProjectDraft, source: Path) -> None:
+    preview = load_context_file("codebook", source, "auto")
+    draft.codebook_source = source
+    suffix = "_text" if "codebook_text" in preview else "_json"
+    draft.config["prompt"].setdefault("context", {})["codebook"] = {
+        "path": str(source),
+        "format": "auto",
+    }
+    expected = f"${{codebook{suffix}}}"
+    if st.session_state.user_prompt == DEFAULT_USER_PROMPT:
+        st.session_state.user_prompt = f"Apply this codebook:\n\n{expected}\n\n{DEFAULT_USER_PROMPT}"
+    st.session_state.codebook_preview = preview
 
 
 def _schema_controls(draft: ProjectDraft) -> None:
@@ -327,6 +424,7 @@ def _settings_and_save(draft: ProjectDraft) -> None:
 
 def run_app() -> None:
     st.set_page_config(page_title="Kellogg LLM Batch Project Builder", layout="wide")
+    _apply_app_styles()
     st.title("Kellogg LLM Batch Project Builder")
     st.caption("Build and validate project files locally. This interface never submits API requests.")
     _load_or_create_initial_draft()

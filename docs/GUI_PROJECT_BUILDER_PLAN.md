@@ -12,12 +12,11 @@ validation.
 - Launch with `kllm-batch gui [PROJECT_DIRECTORY]`, with optional `--port` and
   `--no-browser`.
 - Create a project or reopen an existing `project.yaml`.
-- Load CSV, Parquet, or JSONL data by path; display dimensions and a preview.
+- Select CSV, Parquet, or JSONL data through a browser file picker; display
+  dimensions and a preview.
 - Configure the ID, model-facing, required, and preserved columns.
-- Reference the original data file, using a relative path when it is inside the
-  project.
-- Load and preview a CSV, JSON, YAML, or text codebook, then copy it into
-  `context/`.
+- Keep selected files temporary until Save, then copy input data into `data/`
+  and the selected CSV, JSON, YAML, or text codebook into `context/`.
 - Draft scalar schemas through a guided editor, with advanced JSON editing for
   complex schemas.
 - Edit system and user prompts using starter templates.
@@ -56,7 +55,8 @@ validation.
 
 - Streamlit is optional and installed with
   `python -m pip install -e '.[gui]'`.
-- Input data remains at its original path; the codebook is copied.
+- Browser-selected input data and codebooks are copied into the project only on
+  explicit save.
 - The GUI runs only on the researcher's computer.
 - Saving is explicit, with no autosave.
 - Existing complex schemas open in advanced JSON mode.

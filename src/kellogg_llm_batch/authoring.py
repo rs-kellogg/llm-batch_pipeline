@@ -41,6 +41,7 @@ class ProjectDraft:
     system_prompt: str
     user_prompt: str
     codebook_source: Path | None = None
+    input_upload_source: Path | None = None
     original_hashes: dict[str, str | None] = field(default_factory=dict)
     existing_project: bool = False
 
@@ -311,10 +312,27 @@ def save_project_draft(draft: ProjectDraft) -> SaveResult:
     _check_conflicts(draft)
 
     config = copy.deepcopy(draft.config)
-    input_path = Path(str(config["input"]["path"])).expanduser()
-    if not input_path.is_absolute():
-        input_path = (root / input_path).resolve()
-    config["input"]["path"] = _portable_path(input_path, root)
+    input_destination: Path | None = None
+    if draft.input_upload_source is not None:
+        input_source = draft.input_upload_source.expanduser().resolve()
+        if not input_source.is_file():
+            raise FileNotFoundError(f"Uploaded input is no longer available: {input_source}")
+        input_destination = Path("data") / input_source.name
+        existing_destination = root / input_destination
+        source_hash = sha256_file(input_source)
+        if existing_destination.is_file() and sha256_file(existing_destination) != source_hash:
+            input_destination = Path("data") / (
+                f"{input_source.stem}-{source_hash[:8]}{input_source.suffix.lower()}"
+            )
+            existing_destination = root / input_destination
+            if existing_destination.is_file() and sha256_file(existing_destination) != source_hash:
+                raise FileExistsError(f"Refusing to overwrite an existing input file: {existing_destination}")
+        config["input"]["path"] = str(input_destination)
+    else:
+        input_path = Path(str(config["input"]["path"])).expanduser()
+        if not input_path.is_absolute():
+            input_path = (root / input_path).resolve()
+        config["input"]["path"] = _portable_path(input_path, root)
     config["task"]["output_schema"] = "schema.json"
     config["prompt"]["system_file"] = "prompts/system.txt"
     config["prompt"]["user_file"] = "prompts/user.txt"
@@ -362,6 +380,8 @@ def save_project_draft(draft: ProjectDraft) -> SaveResult:
             Path("prompts/system.txt"): draft.system_prompt.encode("utf-8"),
             Path("prompts/user.txt"): draft.user_prompt.encode("utf-8"),
         }
+        if input_destination is not None:
+            files[input_destination] = draft.input_upload_source.read_bytes()
         if codebook_destination is not None:
             files[codebook_destination] = draft.codebook_source.read_bytes()
         if not (root / ".gitignore").exists():
@@ -398,6 +418,7 @@ def save_project_draft(draft: ProjectDraft) -> SaveResult:
     draft.config = config
     draft.project_dir = root
     draft.existing_project = True
+    draft.input_upload_source = None
     draft.codebook_source = root / codebook_destination if codebook_destination else None
     draft.original_hashes = _snapshot_hashes(root, config)
     project_file = root / "project.yaml"

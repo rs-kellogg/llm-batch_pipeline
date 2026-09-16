@@ -20,12 +20,13 @@ python -m pip install -e '.[gui]'
 kllm-batch gui examples/grant_coding
 ```
 
-The GUI can reopen this project, load its input and codebook, edit mappings,
-schema, and prompts, preview a rendered single-record prompt, and run local
-validation. It never submits API requests and opens with Streamlit's light base
-theme and larger, sans-serif interface type. Because this is a checked-in
-example, create a separate project before saving experiments you do not want
-to keep.
+The GUI can reopen this project, select input data and a codebook through file
+picker windows, edit mappings, schema, and prompts, preview a rendered
+single-record prompt, and run local validation. Selected files are copied into
+the project only when it is saved. The GUI never submits API requests and opens
+with Streamlit's light base theme and larger, sans-serif interface type. Because
+this is a checked-in example, create a separate project before saving
+experiments you do not want to keep.
 
 ### Starting your own project with `init`
 
