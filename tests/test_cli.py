@@ -1,6 +1,7 @@
 from typer.testing import CliRunner
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import yaml
 
 import kellogg_llm_batch.core as core
@@ -14,9 +15,36 @@ runner = CliRunner()
 def test_help_lists_workflow_commands():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("validate", "prepare", "submit", "status", "sync", "audit", "retry", "merge", "compare"):
+    for command in ("gui", "validate", "prepare", "submit", "status", "sync", "audit", "retry", "merge", "compare"):
         assert command in result.stdout
     assert "pilot" not in result.stdout
+
+
+def test_gui_command_launches_local_streamlit(tmp_path, monkeypatch):
+    captured = {}
+    monkeypatch.setattr("kellogg_llm_batch.cli.importlib.util.find_spec", lambda name: object())
+
+    def fake_run(command, env, check):
+        captured.update(command=command, env=env, check=check)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("kellogg_llm_batch.cli.subprocess.run", fake_run)
+    result = runner.invoke(app, ["gui", str(tmp_path / "project"), "--port", "8765", "--no-browser"])
+
+    assert result.exit_code == 0
+    assert captured["env"]["KLLM_GUI_PROJECT_DIR"] == str((tmp_path / "project").resolve())
+    assert "127.0.0.1" in captured["command"]
+    assert "8765" in captured["command"]
+    assert "--server.headless" in captured["command"]
+    assert captured["command"][captured["command"].index("--server.headless") + 1] == "true"
+
+
+def test_gui_command_explains_missing_optional_dependency(monkeypatch):
+    monkeypatch.setattr("kellogg_llm_batch.cli.importlib.util.find_spec", lambda name: None)
+    result = runner.invoke(app, ["gui"])
+    assert result.exit_code == 1
+    assert "GUI dependencies are not installed" in result.stdout
+    assert "python -m pip install -e '.[gui]'" in result.stdout
 
 
 def test_example_validate_command(example_config):

@@ -19,6 +19,18 @@ python -m pip install -e .
 kllm-batch --help
 ```
 
+To use the optional local project-builder GUI, install the GUI extra instead:
+
+```bash
+python -m pip install -e '.[gui]'
+kllm-batch gui my-project
+```
+
+The GUI binds only to `127.0.0.1`, makes no provider calls, and requires no API
+credentials. It writes the same YAML, JSON schema, and prompt files used by the
+CLI. Add `--no-browser` for a headless launch or `--port PORT` to select a
+different local port.
+
 API credentials are read from the environment:
 
 ```bash
@@ -40,6 +52,11 @@ refuses to overwrite a non-empty directory:
 kllm-batch init my-project
 kllm-batch validate -c my-project/project.yaml
 ```
+
+Researchers who prefer a form can use `kllm-batch gui my-project` instead. The
+GUI loads input data and a codebook by local path, maps columns, drafts the
+schema and prompts, previews one rendered record, saves explicitly, and runs
+the same local validation. Preparation and all API operations remain CLI-only.
 
 Prepare a deterministic pilot for inspection before making an API call:
 

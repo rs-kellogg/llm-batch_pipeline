@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 import json
+import os
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -45,6 +49,51 @@ def init_command(directory: Path = typer.Argument(..., help="Empty directory to 
         console.print(f"Next: kllm-batch validate -c {root / 'project.yaml'}")
     except Exception as exc:
         _fail(exc)
+
+
+@app.command("gui")
+def gui_command(
+    project_directory: Optional[Path] = typer.Argument(None, help="New or existing project directory to open."),
+    port: int = typer.Option(8501, min=1, max=65535, help="Local browser port."),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Start the local server without opening a browser window."),
+):
+    """Open the optional local project builder; this makes no provider calls.
+
+    Example: `kllm-batch gui my-project`. Install the optional `gui` package
+    extra first. The server binds only to 127.0.0.1.
+    """
+    if importlib.util.find_spec("streamlit") is None:
+        console.print("[bold red]GUI dependencies are not installed.[/bold red]")
+        console.print("Install them with: python -m pip install -e '.[gui]'", markup=False)
+        raise typer.Exit(1)
+    script = Path(__file__).with_name("gui_app.py")
+    environment = os.environ.copy()
+    if project_directory is not None:
+        environment["KLLM_GUI_PROJECT_DIR"] = str(project_directory.expanduser().resolve())
+    command = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        str(script),
+        "--server.address",
+        "127.0.0.1",
+        "--server.port",
+        str(port),
+        "--server.headless",
+        "true" if no_browser else "false",
+        "--browser.gatherUsageStats",
+        "false",
+        "--server.fileWatcherType",
+        "none",
+    ]
+    try:
+        completed = subprocess.run(command, env=environment, check=False)
+    except KeyboardInterrupt:
+        console.print("GUI stopped.")
+        return
+    if completed.returncode:
+        raise typer.Exit(completed.returncode)
 
 
 @app.command("validate")

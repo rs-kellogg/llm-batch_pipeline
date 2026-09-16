@@ -1,0 +1,221 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+import kellogg_llm_batch.core as core
+from kellogg_llm_batch.authoring import (
+    ProjectDraftConflict,
+    field_rows_to_schema,
+    load_input_table,
+    load_project_draft,
+    new_project_draft,
+    render_project_preview,
+    save_project_draft,
+    schema_supports_guided_editor,
+    schema_to_field_rows,
+)
+from kellogg_llm_batch.core import prepare_run
+from conftest import FakeAdapter
+
+
+def _configured_draft(example_config: Path, tmp_path: Path):
+    example = example_config.parent
+    draft = new_project_draft(tmp_path / "gui-project")
+    draft.config["project"] = {"name": "gui-grant-coding", "description": "GUI test"}
+    draft.config["input"].update(
+        {
+            "path": str((example / "data" / "grants.csv").resolve()),
+            "id_column": "grant_id",
+            "fields_sent": {"project_title": "project_title", "abstract": "abstract"},
+            "columns_preserved": ["year", "investigator", "source_file"],
+            "required_fields": ["abstract"],
+        }
+    )
+    draft.schema = json.loads((example / "schema.json").read_text(encoding="utf-8"))
+    draft.system_prompt = (example / "prompts" / "system.txt").read_text(encoding="utf-8")
+    draft.user_prompt = (example / "prompts" / "user.txt").read_text(encoding="utf-8")
+    draft.codebook_source = (example / "context" / "codebook.csv").resolve()
+    draft.config["prompt"]["context"] = {
+        "codebook": {"path": str(draft.codebook_source), "format": "auto"}
+    }
+    return draft
+
+
+def test_supported_input_formats(tmp_path):
+    frame = pd.DataFrame([{"record_id": "A", "text": "alpha"}, {"record_id": "B", "text": "beta"}])
+    paths = {
+        "csv": tmp_path / "input.csv",
+        "parquet": tmp_path / "input.parquet",
+        "jsonl": tmp_path / "input.jsonl",
+    }
+    frame.to_csv(paths["csv"], index=False)
+    frame.to_parquet(paths["parquet"], index=False)
+    frame.to_json(paths["jsonl"], orient="records", lines=True)
+
+    for expected_format, path in paths.items():
+        loaded, actual_format = load_input_table(path)
+        assert actual_format == expected_format
+        assert loaded["record_id"].astype(str).tolist() == ["A", "B"]
+
+
+def test_guided_schema_round_trip_and_nullable_enum():
+    schema = field_rows_to_schema(
+        [
+            {
+                "name": "label",
+                "type": "string",
+                "nullable": True,
+                "enum_json": '["financial", "other"]',
+                "description": "Primary code",
+            },
+            {"name": "confidence", "type": "number", "nullable": False, "enum_json": "", "description": ""},
+        ]
+    )
+    assert schema["properties"]["label"]["type"] == ["string", "null"]
+    assert schema["properties"]["label"]["enum"] == ["financial", "other", None]
+    assert schema_supports_guided_editor(schema)
+    assert field_rows_to_schema(schema_to_field_rows(schema)) == schema
+
+
+def test_preview_save_validate_and_reopen_preserves_settings(example_config, tmp_path):
+    draft = _configured_draft(example_config, tmp_path)
+    draft.config["providers"]["openai"]["options"] = {"temperature": 0}
+    preview = render_project_preview(draft, source_row=4)
+
+    assert preview.record_id == "GRANT-005"
+    assert '"record_id":"GRANT-005"' in preview.user_prompt
+    assert '"abstract"' in preview.user_prompt
+    assert "GRANT-001" not in preview.user_prompt
+
+    saved = save_project_draft(draft)
+    assert saved.validation_report["valid"] is True
+    assert saved.validation_report["source_rows"] == 10
+    assert (draft.project_dir / "context" / "codebook.csv").is_file()
+    assert len(pd.read_csv(example_config.parent / "data" / "grants.csv")) == 10
+
+    reopened = load_project_draft(draft.project_dir)
+    assert reopened.config["providers"]["openai"]["options"] == {"temperature": 0}
+    assert reopened.config["input"]["fields_sent"] == {
+        "project_title": "project_title",
+        "abstract": "abstract",
+    }
+    assert reopened.codebook_source == draft.project_dir / "context" / "codebook.csv"
+
+
+def test_gui_generated_project_prepares_with_existing_pipeline(example_config, tmp_path, monkeypatch):
+    draft = _configured_draft(example_config, tmp_path)
+    project_file = save_project_draft(draft).project_file
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+
+    run = prepare_run(project_file, "openai", sample_size=2, seed=42)
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+
+    assert manifest["selected_rows"] == 2
+    assert manifest["execution"] == "sync"
+    assert (run / "api_requests" / "segment_0000.jsonl").is_file()
+
+
+def test_save_blocks_external_file_change(example_config, tmp_path):
+    draft = _configured_draft(example_config, tmp_path)
+    save_project_draft(draft)
+    reopened = load_project_draft(draft.project_dir)
+    system_path = draft.project_dir / "prompts" / "system.txt"
+    system_path.write_text(system_path.read_text(encoding="utf-8") + "External edit.\n", encoding="utf-8")
+
+    with pytest.raises(ProjectDraftConflict, match="changed after the GUI loaded"):
+        save_project_draft(reopened)
+
+
+def test_new_project_without_codebook_uses_records_only_prompt(tmp_path):
+    source = tmp_path / "source.csv"
+    pd.DataFrame([{"id": "A", "text": "Alpha"}, {"id": "B", "text": "Beta"}]).to_csv(source, index=False)
+    draft = new_project_draft(tmp_path / "records-only")
+    draft.config["providers"] = {"openai": {"model": "gpt-5-mini"}}
+    draft.config["input"].update(
+        {
+            "path": str(source),
+            "id_column": "id",
+            "fields_sent": {"text": "text"},
+            "required_fields": ["text"],
+        }
+    )
+
+    preview = render_project_preview(draft, source_row=0)
+    result = save_project_draft(draft)
+
+    assert preview.record_id == "A"
+    assert "codebook" not in preview.user_prompt.lower()
+    assert result.validation_report["valid"] is True
+    with pytest.raises(FileExistsError, match="open it instead"):
+        new_project_draft(draft.project_dir)
+
+
+def test_complex_schema_requires_advanced_mode():
+    schema = {
+        "type": "object",
+        "properties": {
+            "evidence": {
+                "type": "array",
+                "items": {"type": "string"},
+            }
+        },
+        "required": ["evidence"],
+        "additionalProperties": False,
+    }
+    assert schema_supports_guided_editor(schema) is False
+    with pytest.raises(ValueError, match="advanced JSON"):
+        schema_to_field_rows(schema)
+
+
+def test_streamlit_gui_starts_without_api_calls(tmp_path, monkeypatch):
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+    monkeypatch.setenv("KLLM_GUI_PROJECT_DIR", str(tmp_path / "new-project"))
+    app_path = Path(__file__).parents[1] / "src" / "kellogg_llm_batch" / "gui_app.py"
+
+    app = streamlit_testing.AppTest.from_file(str(app_path), default_timeout=10).run()
+
+    assert not app.exception
+    assert app.title[0].value == "Kellogg LLM Batch Project Builder"
+    assert "Save project and validate" in [button.label for button in app.button]
+
+
+def test_streamlit_gui_loads_existing_data_codebook_and_preview(example_config, monkeypatch):
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+    monkeypatch.setenv("KLLM_GUI_PROJECT_DIR", str(example_config.parent))
+    app_path = Path(__file__).parents[1] / "src" / "kellogg_llm_batch" / "gui_app.py"
+
+    app = streamlit_testing.AppTest.from_file(str(app_path), default_timeout=10).run()
+    app.button[2].click().run()  # Load input
+    assert not app.exception
+    assert len(app.dataframe) >= 2
+    app.button[3].click().run()  # Load codebook
+    assert not app.exception
+    app.button[4].click().run()  # Render prompt preview
+
+    assert not app.exception
+    rendered = "\n".join(str(block.value) for block in app.code)
+    assert "GRANT-001" in rendered
+    assert "financial" in rendered
+
+
+def test_streamlit_gui_reopens_saves_and_validates(example_config, tmp_path, monkeypatch):
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+    draft = _configured_draft(example_config, tmp_path)
+    save_project_draft(draft)
+    monkeypatch.setenv("KLLM_GUI_PROJECT_DIR", str(draft.project_dir))
+    app_path = Path(__file__).parents[1] / "src" / "kellogg_llm_batch" / "gui_app.py"
+
+    app = streamlit_testing.AppTest.from_file(str(app_path), default_timeout=10).run()
+    app.button[2].click().run()  # Load input
+    app.button[3].click().run()  # Load copied codebook
+    app.button[5].click().run()  # Save project and validate
+
+    assert not app.exception
+    messages = [message.value for message in app.success]
+    assert any("Saved project files" in message for message in messages)
+    assert any("Validation passed" in message for message in messages)

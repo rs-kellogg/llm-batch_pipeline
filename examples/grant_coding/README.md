@@ -13,6 +13,19 @@ mamba activate kllm-batch
 python -m pip install -e .
 ```
 
+For the optional local project-builder GUI, install:
+
+```bash
+python -m pip install -e '.[gui]'
+kllm-batch gui examples/grant_coding
+```
+
+The GUI can reopen this project, load its input and codebook, edit mappings,
+schema, and prompts, preview a rendered single-record prompt, and run local
+validation. It never submits API requests. Because this is a checked-in
+example, create a separate project before saving experiments you do not want
+to keep.
+
 ### Starting your own project with `init`
 
 You do not need `init` to run this checked-in grant example. Use it when you
