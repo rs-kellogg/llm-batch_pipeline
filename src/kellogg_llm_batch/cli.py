@@ -88,6 +88,20 @@ def gui_command(
         "none",
         "--theme.base",
         "light",
+        "--theme.baseFontSize",
+        "18",
+        "--theme.font",
+        "sans-serif",
+        "--theme.headingFont",
+        "sans-serif",
+        "--theme.primaryColor",
+        "#4E2A84",
+        "--theme.secondaryBackgroundColor",
+        "#F7F5FA",
+        "--theme.baseRadius",
+        "medium",
+        "--theme.buttonRadius",
+        "medium",
     ]
     try:
         completed = subprocess.run(command, env=environment, check=False)

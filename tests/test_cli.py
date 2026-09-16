@@ -39,6 +39,9 @@ def test_gui_command_launches_local_streamlit(tmp_path, monkeypatch):
     assert captured["command"][captured["command"].index("--server.headless") + 1] == "true"
     assert "--theme.base" in captured["command"]
     assert captured["command"][captured["command"].index("--theme.base") + 1] == "light"
+    assert captured["command"][captured["command"].index("--theme.baseFontSize") + 1] == "18"
+    assert captured["command"][captured["command"].index("--theme.primaryColor") + 1] == "#4E2A84"
+    assert captured["command"][captured["command"].index("--theme.baseRadius") + 1] == "medium"
 
 
 def test_gui_command_explains_missing_optional_dependency(monkeypatch):

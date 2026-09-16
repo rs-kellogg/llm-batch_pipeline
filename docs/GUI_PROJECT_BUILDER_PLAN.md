@@ -30,8 +30,8 @@ validation.
 ## Architecture and interfaces
 
 - Add Streamlit under an optional `gui` dependency group.
-- Bind the application to `127.0.0.1`, use Streamlit's light base theme, and
-  disable usage telemetry.
+- Bind the application to `127.0.0.1`, use a clean light theme with an
+  18-pixel base font and Kellogg purple accents, and disable usage telemetry.
 - Give a clear installation command when GUI dependencies are absent.
 - Add UI-independent `load_project_draft()`, `render_project_preview()`, and
   `save_project_draft()` functions.
