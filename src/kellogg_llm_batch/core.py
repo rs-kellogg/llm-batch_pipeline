@@ -553,7 +553,14 @@ def cancel_run(run: str | Path, adapter: ProviderAdapter | None = None) -> dict:
         return state
 
 
-def sync_run(run: str | Path, *, watch: bool = False, poll_seconds: int = 60, adapter: ProviderAdapter | None = None) -> dict:
+def sync_run(
+    run: str | Path,
+    *,
+    watch: bool = False,
+    poll_seconds: int = 60,
+    adapter: ProviderAdapter | None = None,
+    status_callback: Callable[[dict[str, Any], bool], None] | None = None,
+) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
     adapter = adapter or get_provider(manifest["provider"])
@@ -577,6 +584,8 @@ def sync_run(run: str | Path, *, watch: bool = False, poll_seconds: int = 60, ad
         _process_downloads(run_dir, adapter)
         state = load_state(run_dir)
         unfinished = any(segment["status"] in {"submitted", "running"} for segment in state["segments"])
+        if status_callback is not None:
+            status_callback(state, unfinished)
         if not watch or not unfinished:
             return state
         time.sleep(poll_seconds)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -266,7 +267,21 @@ def sync_command(
     idempotent: rerun after an interruption to resume from saved state.
     """
     try:
-        state = sync_run(run, watch=watch, poll_seconds=poll_seconds)
+        def print_watch_status(state: dict, waiting: bool) -> None:
+            timestamp = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+            segments = ", ".join(
+                f"segment {segment['index']}: {segment.get('provider_status') or segment['status']}"
+                for segment in state["segments"]
+            )
+            next_check = f" | next check in {poll_seconds}s" if waiting else ""
+            console.print(f"{timestamp} — run {state['status']} | {segments}{next_check}")
+
+        state = sync_run(
+            run,
+            watch=watch,
+            poll_seconds=poll_seconds,
+            status_callback=print_watch_status if watch else None,
+        )
         _print_state(state)
     except Exception as exc:
         _fail(exc)

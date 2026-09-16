@@ -120,3 +120,40 @@ def test_submit_warns_only_when_resuming_partial_sync_run(example_config, tmp_pa
     assert "Execute 1 remaining sync request with estimated maximum remaining cost $0.0025?" in output
     assert "Completed 2 out of 2 synchronous requests" in output
     assert fake.sync_calls == 1
+
+
+def test_sync_watch_prints_each_poll_status(example_config, tmp_path, monkeypatch):
+    class DelayedAdapter(FakeAdapter):
+        def __init__(self):
+            super().__init__()
+            self.status_checks = 0
+
+        def status(self, batch_id):
+            self.status_checks += 1
+            if self.status_checks == 1:
+                return {"provider_status": "in_progress", "state": "running", "raw": {}}
+            return {"provider_status": "completed", "state": "completed", "raw": {}}
+
+    raw = yaml.safe_load(example_config.read_text())
+    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
+    raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
+    raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
+    raw["prompt"]["context"]["codebook"]["path"] = str(example_config.parent / "context" / "codebook.csv")
+    raw["output"]["runs_directory"] = str(tmp_path / "runs")
+    config = tmp_path / "project.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    fake = DelayedAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core.time, "sleep", lambda seconds: None)
+
+    assert runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai"]).exit_code == 0
+    run = next((tmp_path / "runs").iterdir())
+    assert runner.invoke(app, ["submit", str(run), "--yes"]).exit_code == 0
+    watched = runner.invoke(app, ["sync", str(run), "--watch", "--poll-seconds", "7"])
+    output = " ".join(watched.stdout.split())
+
+    assert watched.exit_code == 0
+    assert "run running | segment 0: in_progress | next check in 7s" in output
+    assert "run completed | segment 0: completed" in output
+    assert fake.status_checks == 2

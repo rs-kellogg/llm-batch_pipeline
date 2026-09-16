@@ -206,7 +206,8 @@ kllm-batch sync RUN_ID --watch
 `submit` displays the recorded estimate and asks for confirmation. `sync`
 with `--watch` polls the provider until the batch is finished, downloads
 immutable raw JSONL, validates row-level outputs, writes normalized results,
-and runs the completeness audit automatically.
+and runs the completeness audit automatically. It prints the current run and
+provider status after every poll, along with the time until the next check.
 
 These diagnostic commands are optional for a batch run:
 
