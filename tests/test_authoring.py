@@ -15,6 +15,7 @@ from kellogg_llm_batch.authoring import (
     load_project_draft,
     new_project_draft,
     render_project_preview,
+    render_project_yaml,
     save_project_draft,
     schema_supports_guided_editor,
     schema_to_field_rows,
@@ -97,7 +98,9 @@ def test_preview_save_validate_and_reopen_preserves_settings(example_config, tmp
     assert '"abstract"' in preview.user_prompt
     assert "GRANT-001" not in preview.user_prompt
 
+    yaml_preview = render_project_yaml(draft)
     saved = save_project_draft(draft)
+    assert saved.project_file.read_text(encoding="utf-8") == yaml_preview
     assert saved.validation_report["valid"] is True
     assert saved.validation_report["source_rows"] == 10
     assert (draft.project_dir / "context" / "codebook.csv").is_file()
@@ -257,7 +260,17 @@ def test_streamlit_gui_starts_without_api_calls(tmp_path, monkeypatch):
     assert any("kllm-batch init PATH" in message.value for message in app.info)
     assert any("Enum example" in message.value for message in app.info)
     assert "Preview source row (1-based)" not in [item.label for item in app.number_input]
+    assert "Update JSON" in [button.label for button in app.button]
+    assert "Update prompt preview" in [button.label for button in app.button]
     assert "Save project and validate" in [button.label for button in app.button]
+    yaml_blocks = [str(block.value) for block in app.code if "project:" in str(block.value)]
+    assert yaml_blocks
+    yaml_text = yaml_blocks[0]
+    ordered_keys = ["version:", "project:", "input:", "task:", "prompt:", "providers:", "budget:", "evaluation:", "output:"]
+    assert [yaml_text.index(key) for key in ordered_keys] == sorted(yaml_text.index(key) for key in ordered_keys)
+    next(item for item in app.text_input if item.label == "Project name").set_value("renamed-project").run()
+    updated_yaml = next(str(block.value) for block in app.code if "project:" in str(block.value))
+    assert "name: renamed-project" in updated_yaml
 
 
 def test_streamlit_gui_file_pickers_load_input_and_codebook(tmp_path, monkeypatch):
@@ -285,12 +298,12 @@ def test_streamlit_gui_loads_existing_data_codebook_and_preview(example_config, 
     app_path = Path(__file__).parents[1] / "src" / "kellogg_llm_batch" / "gui_app.py"
 
     app = streamlit_testing.AppTest.from_file(str(app_path), default_timeout=10).run()
-    app.button[0].click().run()  # Load input
+    next(button for button in app.button if button.label == "Load current project input").click().run()
     assert not app.exception
     assert len(app.dataframe) >= 2
-    app.button[1].click().run()  # Load codebook
+    next(button for button in app.button if button.label == "Load current project codebook").click().run()
     assert not app.exception
-    app.button[2].click().run()  # Render prompt preview
+    next(button for button in app.button if button.label == "Update prompt preview").click().run()
 
     assert not app.exception
     rendered = "\n".join(str(block.value) for block in app.code)
@@ -299,7 +312,10 @@ def test_streamlit_gui_loads_existing_data_codebook_and_preview(example_config, 
     assert "GRANT-003" in rendered
     assert "GRANT-004" not in rendered
     assert "financial" in rendered
-    assert any("source rows 1–3" in caption.value for caption in app.caption)
+    assert any("Source rows 1–3" in caption.value for caption in app.caption)
+    next(item for item in app.text_area if item.label == "System prompt").set_value("Changed system prompt").run()
+    assert any("Update the preview" in warning.value for warning in app.warning)
+    assert any("GRANT-001" in str(block.value) for block in app.code)
 
 
 def test_streamlit_gui_reopens_saves_and_validates(example_config, tmp_path, monkeypatch):
@@ -310,9 +326,9 @@ def test_streamlit_gui_reopens_saves_and_validates(example_config, tmp_path, mon
     app_path = Path(__file__).parents[1] / "src" / "kellogg_llm_batch" / "gui_app.py"
 
     app = streamlit_testing.AppTest.from_file(str(app_path), default_timeout=10).run()
-    app.button[0].click().run()  # Load input
-    app.button[1].click().run()  # Load copied codebook
-    app.button[3].click().run()  # Save project and validate
+    next(button for button in app.button if button.label == "Load current project input").click().run()
+    next(button for button in app.button if button.label == "Load current project codebook").click().run()
+    next(button for button in app.button if button.label == "Save project and validate").click().run()
 
     assert not app.exception
     messages = [message.value for message in app.success]

@@ -19,12 +19,16 @@ local validation.
 - Keep selected files temporary until Save, then copy input data into `data/`
   and the selected CSV, JSON, YAML, or text codebook into `context/`.
 - Draft scalar schemas through a guided editor, with advanced JSON editing for
-  complex schemas.
-- Edit system and user prompts using starter templates.
+  complex schemas. Show the guided table and an explicitly updated, read-only
+  `schema.json` preview side by side.
+- Edit system and user prompts using starter templates beside a persistent
+  preview that is refreshed explicitly and marked when stale.
 - Preview the exact rendered prompts for the first `rows_per_request` source
   rows with `${codebook_json}` and `${records_json}`, wrapping long lines.
 - Provide sidebar links to every authoring section and show a valid JSON enum
   array example above the guided schema table.
+- Arrange settings in `project.yaml` key order beside a read-only live YAML
+  preview produced by the same configuration builder used during Save.
 - Save `project.yaml`, `schema.json`, both prompt files, and the codebook
   atomically, then run local validation.
 - Make no provider calls and request no credentials.

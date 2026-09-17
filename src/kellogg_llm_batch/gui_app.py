@@ -18,9 +18,11 @@ from kellogg_llm_batch.authoring import (
     load_input_table,
     load_project_draft,
     render_project_preview,
+    render_project_yaml,
     save_project_draft,
     schema_supports_guided_editor,
     schema_to_field_rows,
+    validate_output_schema,
 )
 from kellogg_llm_batch.data import normalize_id
 from kellogg_llm_batch.prompts import load_context_file
@@ -106,6 +108,19 @@ def _stage_upload(uploaded: Any, category: str) -> tuple[Path, str]:
     return target, signature
 
 
+def _prompt_preview_signature(draft: ProjectDraft, rows_per_request: int) -> str:
+    payload = {
+        "system_prompt": st.session_state.system_prompt,
+        "user_prompt": st.session_state.user_prompt,
+        "rows_per_request": rows_per_request,
+        "input": draft.config.get("input", {}),
+        "context": draft.config.get("prompt", {}).get("context", {}),
+        "codebook_source": str(draft.codebook_source or ""),
+    }
+    serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    return sha256(serialized.encode("utf-8")).hexdigest()
+
+
 def _initialize_draft(draft: ProjectDraft) -> None:
     st.session_state.draft = draft
     st.session_state.project_directory = str(draft.project_dir)
@@ -119,6 +134,8 @@ def _initialize_draft(draft: ProjectDraft) -> None:
     st.session_state.pop("input_frame", None)
     st.session_state.pop("column_rows", None)
     st.session_state.pop("codebook_preview", None)
+    st.session_state.pop("prompt_preview", None)
+    st.session_state.pop("prompt_preview_signature", None)
     st.session_state.pop("input_upload_processed", None)
     st.session_state.pop("codebook_upload_processed", None)
 
@@ -319,94 +336,167 @@ def _load_codebook(draft: ProjectDraft, source: Path) -> None:
 def _schema_controls(draft: ProjectDraft) -> None:
     st.subheader("3. Output schema", anchor="output-schema")
     mode = st.radio("Editor mode", ["Guided", "Advanced JSON"], horizontal=True, key="schema_mode")
+    editor_col, json_col = st.columns([1.15, 0.85], gap="large")
     if mode == "Guided":
-        st.info(
-            'Enum example: `["financial", "organizational", "technical", "other"]`. '
-            "Use double quotes and square brackets; leave the cell blank when a field has no fixed choices."
-        )
-        rows = pd.DataFrame(st.session_state.schema_rows)
-        edited = st.data_editor(
-            rows,
-            key="schema_field_editor",
-            num_rows="dynamic",
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "name": "Output field",
-                "type": st.column_config.SelectboxColumn("Type", options=["string", "integer", "number", "boolean"]),
-                "nullable": "Allow null",
-                "enum_json": st.column_config.TextColumn(
-                    "Optional enum as JSON array",
-                    help='Example: ["financial", "organizational", "technical", "other"]',
-                ),
-                "description": "Description",
-                "minimum": "Minimum (numeric only)",
-                "maximum": "Maximum (numeric only)",
-            },
-        )
-        st.session_state.schema_rows = edited.to_dict("records")
-        try:
-            draft.schema = field_rows_to_schema(st.session_state.schema_rows)
-            st.session_state.schema_json = json.dumps(draft.schema, indent=2, ensure_ascii=False)
-            st.json(draft.schema)
-        except Exception as exc:
-            st.error(str(exc))
+        with editor_col:
+            st.markdown("#### Guided field editor")
+            st.info(
+                'Enum example: `["financial", "organizational", "technical", "other"]`. '
+                "Use double quotes and square brackets; leave the cell blank when a field has no fixed choices."
+            )
+            rows = pd.DataFrame(st.session_state.schema_rows)
+            edited = st.data_editor(
+                rows,
+                key="schema_field_editor",
+                num_rows="dynamic",
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "name": "Output field",
+                    "type": st.column_config.SelectboxColumn(
+                        "Type", options=["string", "integer", "number", "boolean"]
+                    ),
+                    "nullable": "Allow null",
+                    "enum_json": st.column_config.TextColumn(
+                        "Optional enum as JSON array",
+                        help='Example: ["financial", "organizational", "technical", "other"]',
+                    ),
+                    "description": "Description",
+                    "minimum": "Minimum (numeric only)",
+                    "maximum": "Maximum (numeric only)",
+                },
+            )
+            proposed_rows = edited.to_dict("records")
+            st.session_state.schema_rows = proposed_rows
+            proposed_schema: dict[str, Any] | None = None
+            try:
+                proposed_schema = field_rows_to_schema(proposed_rows)
+            except Exception as exc:
+                st.error(str(exc))
+            update_schema = st.button("Update JSON", disabled=proposed_schema is None, width="stretch")
+            if update_schema and proposed_schema is not None:
+                draft.schema = proposed_schema
+                st.session_state.schema_json = json.dumps(draft.schema, indent=2, ensure_ascii=False)
+                st.success("schema.json preview updated.")
+            elif proposed_schema is not None and proposed_schema != draft.schema:
+                st.warning("The table has changed. Click Update JSON to apply it to schema.json.")
+        with json_col:
+            st.markdown("#### schema.json preview")
+            st.caption("Read-only in Guided mode. Save writes this exact JSON.")
+            st.code(st.session_state.schema_json, language="json", wrap_lines=True, height=560)
     else:
-        st.text_area("schema.json", key="schema_json", height=360)
-        try:
-            parsed = json.loads(st.session_state.schema_json)
-            if not isinstance(parsed, dict):
-                raise ValueError("Schema must be a JSON object")
-            draft.schema = parsed
-        except Exception as exc:
-            st.error(f"Schema JSON: {exc}")
+        with editor_col:
+            st.markdown("#### Advanced schema mode")
+            st.info(
+                "Use Advanced JSON for nested objects, arrays, or other schemas that the guided table cannot represent. "
+                "The JSON editor is the source of truth in this mode."
+            )
+        with json_col:
+            st.markdown("#### Editable schema.json")
+            st.text_area("schema.json", key="schema_json", height=500, label_visibility="collapsed")
+            if st.button("Validate and use JSON", width="stretch"):
+                try:
+                    parsed = json.loads(st.session_state.schema_json)
+                    if not isinstance(parsed, dict):
+                        raise ValueError("Schema must be a JSON object")
+                    validate_output_schema(parsed)
+                    draft.schema = parsed
+                    st.success("Advanced schema is valid and will be used when saving.")
+                except Exception as exc:
+                    st.error(f"Schema JSON: {exc}")
 
 
 def _prompt_controls(draft: ProjectDraft) -> None:
     st.subheader("4. Prompts and request preview", anchor="prompts-preview")
-    st.text_area("System prompt", key="system_prompt", height=160)
-    st.text_area("User prompt template", key="user_prompt", height=220)
-    draft.system_prompt = st.session_state.system_prompt
-    draft.user_prompt = st.session_state.user_prompt
-    task = draft.config["task"]
-    rows_per_request = int(
-        st.number_input(
-            "Rows per API request",
-            min_value=1,
-            value=int(task.get("rows_per_request", 10)),
-            help="The preview starts at the first source row and uses this many records, matching a real request.",
-        )
-    )
-    task["rows_per_request"] = rows_per_request
-    if st.button("Render prompt preview"):
-        try:
-            preview = render_project_preview(draft, source_row=0, row_count=rows_per_request)
-            first_row = preview.source_rows[0] + 1
-            last_row = preview.source_rows[-1] + 1
-            st.caption(
-                f"Previewing source rows {first_row}–{last_row} ({len(preview.records)} records), "
-                f"matching rows_per_request={rows_per_request}. This does not filter the saved project."
+    editor_col, preview_col = st.columns([1, 1], gap="large")
+    with editor_col:
+        st.markdown("#### Prompt editor")
+        st.text_area("System prompt", key="system_prompt", height=180)
+        st.text_area("User prompt template", key="user_prompt", height=260)
+        draft.system_prompt = st.session_state.system_prompt
+        draft.user_prompt = st.session_state.user_prompt
+        task = draft.config["task"]
+        rows_per_request = int(
+            st.number_input(
+                "Rows per API request",
+                min_value=1,
+                value=int(task.get("rows_per_request", 10)),
+                help="The preview starts at the first source row and uses this many records, matching a real request.",
             )
-            st.markdown("**System prompt sent to the provider**")
-            st.code(preview.system_prompt, language=None, wrap_lines=True)
-            st.markdown("**Rendered user prompt sent to the provider**")
-            st.code(preview.user_prompt, language="json", wrap_lines=True)
-        except Exception as exc:
-            st.error(str(exc))
+        )
+        task["rows_per_request"] = rows_per_request
+        current_signature = _prompt_preview_signature(draft, rows_per_request)
+        if st.button("Update prompt preview", width="stretch"):
+            try:
+                preview = render_project_preview(draft, source_row=0, row_count=rows_per_request)
+                st.session_state.prompt_preview = {
+                    "system_prompt": preview.system_prompt,
+                    "user_prompt": preview.user_prompt,
+                    "first_row": preview.source_rows[0] + 1,
+                    "last_row": preview.source_rows[-1] + 1,
+                    "record_count": len(preview.records),
+                    "rows_per_request": rows_per_request,
+                }
+                st.session_state.prompt_preview_signature = current_signature
+            except Exception as exc:
+                st.error(str(exc))
+    with preview_col:
+        st.markdown("#### Provider prompt preview")
+        saved_preview = st.session_state.get("prompt_preview")
+        if saved_preview is None:
+            st.info("Click Update prompt preview to render the first complete request.")
+        else:
+            if st.session_state.get("prompt_preview_signature") != current_signature:
+                st.warning("The prompt, request size, or input mapping changed. Update the preview before relying on it.")
+            st.caption(
+                f"Source rows {saved_preview['first_row']}–{saved_preview['last_row']} "
+                f"({saved_preview['record_count']} records), matching "
+                f"rows_per_request={saved_preview['rows_per_request']}."
+            )
+            system_tab, user_tab = st.tabs(["System prompt", "Rendered user prompt"])
+            with system_tab:
+                st.code(saved_preview["system_prompt"], language=None, wrap_lines=True, height=430)
+            with user_tab:
+                st.code(saved_preview["user_prompt"], language="json", wrap_lines=True, height=430)
 
 
 def _settings_and_save(draft: ProjectDraft) -> None:
     st.subheader("5. Settings, save, and validate", anchor="settings-save")
     config = draft.config
-    project = config["project"]
-    task = config["task"]
-    prompt = config["prompt"]
-    budget = config["budget"]
-    evaluation = config.setdefault("evaluation", {"random_seed": 42, "gold_columns": {}})
-    project["name"] = st.text_input("Project name", value=project.get("name", ""))
-    project["description"] = st.text_input("Description", value=project.get("description", ""))
-    prompt["version"] = st.text_input("Prompt version", value=str(prompt.get("version", "1.0")))
-    with st.expander("Provider, token, and budget settings"):
+    settings_col, yaml_col = st.columns([1, 1], gap="large")
+    with settings_col:
+        st.markdown("#### Settings")
+        st.markdown("**version**")
+        st.caption(f"Configuration format version: {config.get('version', 1)}")
+
+        st.markdown("**project**")
+        project = config["project"]
+        project["name"] = st.text_input("Project name", value=project.get("name", ""))
+        project["description"] = st.text_input("Description", value=project.get("description", ""))
+
+        st.markdown("**input**")
+        input_config = config["input"]
+        st.caption(f"path: {input_config.get('path', '')}")
+        st.caption(f"id_column: {input_config.get('id_column') or 'generated IDs'}")
+        st.caption(f"fields_sent: {', '.join(input_config.get('fields_sent', {})) or 'none'}")
+
+        st.markdown("**task**")
+        task = config["task"]
+        st.caption(f"rows_per_request: {task.get('rows_per_request')} (edited with the prompt preview)")
+        task["max_input_tokens"] = int(
+            st.number_input("Maximum input tokens", min_value=1, value=int(task.get("max_input_tokens") or 50000))
+        )
+        task["max_output_tokens"] = int(
+            st.number_input("Maximum output tokens", min_value=1, value=int(task.get("max_output_tokens", 2000)))
+        )
+
+        st.markdown("**prompt**")
+        prompt = config["prompt"]
+        prompt["version"] = st.text_input("Prompt version", value=str(prompt.get("version", "1.0")))
+        st.caption(f"system_file: {prompt.get('system_file', 'prompts/system.txt')}")
+        st.caption(f"user_file: {prompt.get('user_file', 'prompts/user.txt')}")
+
+        st.markdown("**providers**")
         existing = config.get("providers", {})
         selected = st.multiselect("Providers", ["openai", "anthropic"], default=list(existing) or ["openai"])
         providers = {}
@@ -416,10 +506,32 @@ def _settings_and_save(draft: ProjectDraft) -> None:
             item["model"] = st.text_input(f"{name} model", value=item.get("model", defaults[name]), key=f"model_{name}")
             providers[name] = item
         config["providers"] = providers
-        task["max_input_tokens"] = int(st.number_input("Maximum input tokens", min_value=1, value=int(task.get("max_input_tokens") or 50000)))
-        task["max_output_tokens"] = int(st.number_input("Maximum output tokens", min_value=1, value=int(task.get("max_output_tokens", 2000))))
-        budget["max_estimated_usd"] = float(st.number_input("Maximum estimated USD", min_value=0.01, value=float(budget.get("max_estimated_usd", 10.0))))
+
+        st.markdown("**budget**")
+        budget = config["budget"]
+        budget["max_estimated_usd"] = float(
+            st.number_input(
+                "Maximum estimated USD", min_value=0.01, value=float(budget.get("max_estimated_usd", 10.0))
+            )
+        )
+
+        st.markdown("**evaluation**")
+        evaluation = config.setdefault("evaluation", {"random_seed": 42, "gold_columns": {}})
         evaluation["random_seed"] = int(st.number_input("Random seed", value=int(evaluation.get("random_seed", 42))))
+
+        st.markdown("**output**")
+        output = config.setdefault("output", {})
+        output["write_parquet"] = st.checkbox("Write Parquet results", value=bool(output.get("write_parquet", True)))
+        output["write_csv"] = st.checkbox("Write CSV results", value=bool(output.get("write_csv", True)))
+
+    with yaml_col:
+        st.markdown("#### project.yaml preview")
+        st.caption("Read-only and updated from the settings on the left. Save writes this exact YAML.")
+        try:
+            yaml_preview = render_project_yaml(draft)
+            st.code(yaml_preview, language="yaml", wrap_lines=True, height=980)
+        except Exception as exc:
+            st.error(f"Cannot render project.yaml yet: {exc}")
 
     if st.button("Save project and validate", type="primary", width="stretch"):
         try:

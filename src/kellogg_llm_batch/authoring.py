@@ -27,6 +27,17 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 DEFAULT_USER_PROMPT = "Records:\n\n${records_json}\n"
 SCALAR_TYPES = {"string", "integer", "number", "boolean"}
+PROJECT_CONFIG_ORDER = (
+    "version",
+    "project",
+    "input",
+    "task",
+    "prompt",
+    "providers",
+    "budget",
+    "evaluation",
+    "output",
+)
 
 
 class ProjectDraftConflict(RuntimeError):
@@ -322,13 +333,12 @@ def _check_conflicts(draft: ProjectDraft) -> None:
             )
 
 
-def save_project_draft(draft: ProjectDraft) -> SaveResult:
+def _build_save_config(draft: ProjectDraft) -> tuple[dict[str, Any], Path | None, Path | None]:
+    """Build the exact portable configuration and copy destinations used by Save."""
     root = draft.project_dir.expanduser().resolve()
-    if root.exists() and any(root.iterdir()) and not draft.existing_project and not (root / "project.yaml").exists():
-        raise FileExistsError(f"Refusing to create a project in unrelated nonempty directory: {root}")
-    _check_conflicts(draft)
-
-    config = copy.deepcopy(draft.config)
+    remaining = copy.deepcopy(draft.config)
+    config = {key: remaining.pop(key) for key in PROJECT_CONFIG_ORDER if key in remaining}
+    config.update(remaining)
     input_destination: Path | None = None
     if draft.input_upload_source is not None:
         input_source = draft.input_upload_source.expanduser().resolve()
@@ -378,19 +388,39 @@ def save_project_draft(draft: ProjectDraft) -> SaveResult:
     else:
         context.pop("codebook", None)
     config["prompt"]["context"] = context
+    return config, input_destination, codebook_destination
+
+
+def render_project_yaml(draft: ProjectDraft) -> str:
+    """Render the exact project.yaml content that Save would currently write."""
+    config, _, _ = _build_save_config(draft)
+    return yaml.safe_dump(config, sort_keys=False, allow_unicode=True)
+
+
+def validate_output_schema(schema: dict[str, Any]) -> None:
+    """Validate JSON Schema syntax and the package-managed row contract."""
+    Draft202012Validator.check_schema(schema)
+    if schema.get("type") != "object":
+        raise ValueError("Per-row schema must have type 'object'")
+    if "record_id" in schema.get("properties", {}):
+        raise ValueError("record_id is package-managed and cannot appear in schema.json")
+    if schema.get("additionalProperties") is not False:
+        raise ValueError("Per-row schema must set additionalProperties to false")
+    if set(schema.get("properties", {})) - set(schema.get("required", [])):
+        raise ValueError("Every schema property must be required; use nullable types for optional values")
+
+
+def save_project_draft(draft: ProjectDraft) -> SaveResult:
+    root = draft.project_dir.expanduser().resolve()
+    if root.exists() and any(root.iterdir()) and not draft.existing_project and not (root / "project.yaml").exists():
+        raise FileExistsError(f"Refusing to create a project in unrelated nonempty directory: {root}")
+    _check_conflicts(draft)
+    config, input_destination, codebook_destination = _build_save_config(draft)
 
     ProjectConfig.model_validate(
         {**copy.deepcopy(config), "config_path": root / "project.yaml", "base_dir": root}
     )
-    Draft202012Validator.check_schema(draft.schema)
-    if draft.schema.get("type") != "object":
-        raise ValueError("Per-row schema must have type 'object'")
-    if "record_id" in draft.schema.get("properties", {}):
-        raise ValueError("record_id is package-managed and cannot appear in schema.json")
-    if draft.schema.get("additionalProperties") is not False:
-        raise ValueError("Per-row schema must set additionalProperties to false")
-    if set(draft.schema.get("properties", {})) - set(draft.schema.get("required", [])):
-        raise ValueError("Every schema property must be required; use nullable types for optional values")
+    validate_output_schema(draft.schema)
     validate_template(draft.user_prompt, _context_placeholders(config))
 
     root.mkdir(parents=True, exist_ok=True)
