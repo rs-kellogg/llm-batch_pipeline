@@ -32,7 +32,9 @@ only when it is saved. The GUI never submits API requests and opens with
 Streamlit's light base theme and larger, sans-serif interface type. Because
 this checked-in example is already initialized, it can be opened directly. For
 your own work, first run `kllm-batch init my-project`, then
-`kllm-batch gui my-project`.
+`kllm-batch gui my-project`. The interface identifies `data/input.csv` and
+`context/` as the default places for project input and codebook files, and
+Guided/Advanced schema mode changes carry compatible fields in both directions.
 
 ### Starting your own project with `init`
 

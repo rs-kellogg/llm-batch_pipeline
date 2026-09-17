@@ -20,13 +20,16 @@ local validation.
   and the selected CSV, JSON, YAML, or text codebook into `context/`.
 - Draft scalar schemas through a guided editor, with advanced JSON editing for
   complex schemas. Show the guided table and an explicitly updated, read-only
-  `schema.json` preview side by side.
+  `schema.json` preview side by side. Synchronize compatible edits when users
+  switch modes, and preserve advanced-only schemas without lossy conversion.
 - Edit system and user prompts using starter templates beside a persistent
   preview that is refreshed explicitly and marked when stale.
 - Preview the exact rendered prompts for the first `rows_per_request` source
   rows with `${codebook_json}` and `${records_json}`, wrapping long lines.
 - Provide sidebar links to every authoring section and show a valid JSON enum
   array example above the guided schema table.
+- Emphasize the stable-ID selector and explain the initialized `data/input.csv`
+  and `context/` locations directly under the corresponding section headings.
 - Arrange settings in `project.yaml` key order beside a read-only live YAML
   preview produced by the same configuration builder used during Save.
 - Save `project.yaml`, `schema.json`, both prompt files, and the codebook

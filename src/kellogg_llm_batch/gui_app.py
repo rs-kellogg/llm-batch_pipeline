@@ -66,6 +66,13 @@ def _apply_app_styles() -> None:
             overflow-wrap: anywhere !important;
             word-break: break-word !important;
         }
+        .kllm-field-heading {
+            color: #4E2A84;
+            font-size: 1.2rem;
+            font-weight: 700;
+            line-height: 1.35;
+            margin: 1.1rem 0 0.2rem 0;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -128,8 +135,11 @@ def _initialize_draft(draft: ProjectDraft) -> None:
     st.session_state.user_prompt = draft.user_prompt
     guided = schema_supports_guided_editor(draft.schema)
     st.session_state.schema_mode = "Guided" if guided else "Advanced JSON"
+    st.session_state.schema_last_mode = st.session_state.schema_mode
+    st.session_state.schema_guided_blocked = False
     st.session_state.schema_rows = schema_to_field_rows(draft.schema) if guided else []
-    st.session_state.schema_json = json.dumps(draft.schema, indent=2, ensure_ascii=False)
+    st.session_state.schema_json_text = json.dumps(draft.schema, indent=2, ensure_ascii=False)
+    st.session_state.pop("schema_json_editor", None)
     st.session_state.upload_widget_generation = st.session_state.get("upload_widget_generation", 0) + 1
     st.session_state.pop("input_frame", None)
     st.session_state.pop("column_rows", None)
@@ -215,6 +225,11 @@ def _show_validation(report: dict[str, Any]) -> None:
 
 def _input_controls(draft: ProjectDraft) -> None:
     st.subheader("1. Input data and column mapping", anchor="input-data")
+    st.caption(
+        "The initialized default is `data/input.csv`. You may replace that file, copy a CSV, Parquet, or JSONL "
+        "file into the project's `data/` folder, or choose a file below. A chosen file is copied into `data/` "
+        "when the project is saved."
+    )
     configured_path = str(draft.config["input"].get("path", ""))
     current_path = _resolved_config_path(draft, configured_path) if configured_path else ""
     if current_path:
@@ -257,7 +272,16 @@ def _input_controls(draft: ProjectDraft) -> None:
     id_options = ["Generate deterministic IDs", *map(str, frame.columns)]
     configured_id = draft.config["input"].get("id_column")
     id_index = id_options.index(configured_id) if configured_id in id_options else 0
-    id_column = st.selectbox("Stable ID column", id_options, index=id_index)
+    st.markdown('<p class="kllm-field-heading">Stable ID column</p>', unsafe_allow_html=True)
+    st.caption(
+        "Choose a unique, nonempty source identifier. Generated IDs are deterministic for this fixed input snapshot."
+    )
+    id_column = st.selectbox(
+        "Stable ID column",
+        id_options,
+        index=id_index,
+        label_visibility="collapsed",
+    )
     edited = st.data_editor(
         st.session_state.column_rows,
         key="column_mapping_editor",
@@ -287,6 +311,11 @@ def _input_controls(draft: ProjectDraft) -> None:
 
 def _codebook_controls(draft: ProjectDraft) -> None:
     st.subheader("2. Codebook", anchor="codebook")
+    st.caption(
+        "A codebook is optional; `kllm-batch init` leaves `context/` ready for it. Copy a CSV, JSON, YAML, TXT, "
+        "or Markdown codebook into that folder, or choose one below. A chosen file is copied into `context/` "
+        "when the project is saved."
+    )
     current_path = str(draft.codebook_source or "")
     if current_path:
         st.info(f"Current codebook: {current_path}")
@@ -336,74 +365,141 @@ def _load_codebook(draft: ProjectDraft, source: Path) -> None:
 def _schema_controls(draft: ProjectDraft) -> None:
     st.subheader("3. Output schema", anchor="output-schema")
     mode = st.radio("Editor mode", ["Guided", "Advanced JSON"], horizontal=True, key="schema_mode")
+    previous_mode = st.session_state.get("schema_last_mode", mode)
+    conversion_error: str | None = None
+    if mode != previous_mode:
+        if mode == "Advanced JSON":
+            if st.session_state.get("schema_guided_blocked", False):
+                st.session_state.schema_guided_blocked = False
+            else:
+                try:
+                    converted = field_rows_to_schema(st.session_state.schema_rows)
+                    validate_output_schema(converted)
+                    draft.schema = converted
+                    st.session_state.schema_json_text = json.dumps(converted, indent=2, ensure_ascii=False)
+                except Exception as exc:
+                    conversion_error = (
+                        f"The guided table could not be converted, so Advanced JSON is showing the last valid schema: {exc}"
+                    )
+        else:
+            try:
+                advanced_text = st.session_state.get("schema_json_editor", st.session_state.schema_json_text)
+                st.session_state.schema_json_text = advanced_text
+                converted = json.loads(advanced_text)
+                if not isinstance(converted, dict):
+                    raise ValueError("Schema must be a JSON object")
+                validate_output_schema(converted)
+                draft.schema = converted
+                if schema_supports_guided_editor(converted):
+                    st.session_state.schema_rows = schema_to_field_rows(converted)
+                    st.session_state.schema_guided_blocked = False
+                else:
+                    st.session_state.schema_guided_blocked = True
+                    conversion_error = (
+                        "This valid schema uses advanced features that the guided table cannot represent. "
+                        "No JSON was changed; switch back to Advanced JSON to continue editing it."
+                    )
+            except Exception as exc:
+                st.session_state.schema_guided_blocked = True
+                conversion_error = (
+                    f"The Advanced JSON could not be converted. Its text is preserved; switch back to fix it: {exc}"
+                )
+        st.session_state.schema_last_mode = mode
     editor_col, json_col = st.columns([1.15, 0.85], gap="large")
     if mode == "Guided":
         with editor_col:
             st.markdown("#### Guided field editor")
+            if conversion_error:
+                st.error(conversion_error)
+            guided_available = conversion_error is None and schema_supports_guided_editor(draft.schema)
             st.info(
                 'Enum example: `["financial", "organizational", "technical", "other"]`. '
                 "Use double quotes and square brackets; leave the cell blank when a field has no fixed choices."
             )
-            rows = pd.DataFrame(st.session_state.schema_rows)
-            edited = st.data_editor(
-                rows,
-                key="schema_field_editor",
-                num_rows="dynamic",
-                hide_index=True,
-                width="stretch",
-                column_config={
-                    "name": "Output field",
-                    "type": st.column_config.SelectboxColumn(
-                        "Type", options=["string", "integer", "number", "boolean"]
-                    ),
-                    "nullable": "Allow null",
-                    "enum_json": st.column_config.TextColumn(
-                        "Optional enum as JSON array",
-                        help='Example: ["financial", "organizational", "technical", "other"]',
-                    ),
-                    "description": "Description",
-                    "minimum": "Minimum (numeric only)",
-                    "maximum": "Maximum (numeric only)",
-                },
-            )
-            proposed_rows = edited.to_dict("records")
-            st.session_state.schema_rows = proposed_rows
-            proposed_schema: dict[str, Any] | None = None
-            try:
-                proposed_schema = field_rows_to_schema(proposed_rows)
-            except Exception as exc:
-                st.error(str(exc))
-            update_schema = st.button("Update JSON", disabled=proposed_schema is None, width="stretch")
-            if update_schema and proposed_schema is not None:
-                draft.schema = proposed_schema
-                st.session_state.schema_json = json.dumps(draft.schema, indent=2, ensure_ascii=False)
-                st.success("schema.json preview updated.")
-            elif proposed_schema is not None and proposed_schema != draft.schema:
-                st.warning("The table has changed. Click Update JSON to apply it to schema.json.")
+            if guided_available:
+                rows = pd.DataFrame(st.session_state.schema_rows)
+                edited = st.data_editor(
+                    rows,
+                    key="schema_field_editor",
+                    num_rows="dynamic",
+                    hide_index=True,
+                    width="stretch",
+                    column_config={
+                        "name": "Output field",
+                        "type": st.column_config.SelectboxColumn(
+                            "Type", options=["string", "integer", "number", "boolean"]
+                        ),
+                        "nullable": "Allow null",
+                        "enum_json": st.column_config.TextColumn(
+                            "Optional enum as JSON array",
+                            help='Example: ["financial", "organizational", "technical", "other"]',
+                        ),
+                        "description": "Description",
+                        "minimum": "Minimum (numeric only)",
+                        "maximum": "Maximum (numeric only)",
+                    },
+                )
+                proposed_rows = edited.to_dict("records")
+                st.session_state.schema_rows = proposed_rows
+                proposed_schema: dict[str, Any] | None = None
+                try:
+                    proposed_schema = field_rows_to_schema(proposed_rows)
+                except Exception as exc:
+                    st.error(str(exc))
+                update_schema = st.button("Update JSON", disabled=proposed_schema is None, width="stretch")
+                if update_schema and proposed_schema is not None:
+                    draft.schema = proposed_schema
+                    st.session_state.schema_json_text = json.dumps(draft.schema, indent=2, ensure_ascii=False)
+                    st.success("schema.json preview updated.")
+                elif proposed_schema is not None and proposed_schema != draft.schema:
+                    st.warning("The table has changed. Click Update JSON to apply it to schema.json.")
         with json_col:
             st.markdown("#### schema.json preview")
-            st.caption("Read-only in Guided mode. Save writes this exact JSON.")
-            st.code(st.session_state.schema_json, language="json", wrap_lines=True, height=560)
+            if conversion_error:
+                st.caption(
+                    "The Advanced JSON text is preserved. Save uses the last validated schema; switch back to "
+                    "Advanced JSON to continue editing."
+                )
+            else:
+                st.caption("Read-only in Guided mode. Save writes this exact JSON.")
+            st.code(st.session_state.schema_json_text, language="json", wrap_lines=True, height=560)
     else:
         with editor_col:
             st.markdown("#### Advanced schema mode")
+            if conversion_error:
+                st.error(conversion_error)
             st.info(
                 "Use Advanced JSON for nested objects, arrays, or other schemas that the guided table cannot represent. "
                 "The JSON editor is the source of truth in this mode."
             )
         with json_col:
             st.markdown("#### Editable schema.json")
-            st.text_area("schema.json", key="schema_json", height=500, label_visibility="collapsed")
-            if st.button("Validate and use JSON", width="stretch"):
+            if "schema_json_editor" not in st.session_state:
+                st.session_state.schema_json_editor = st.session_state.schema_json_text
+            st.text_area("schema.json", key="schema_json_editor", height=500, label_visibility="collapsed")
+            st.session_state.schema_json_text = st.session_state.schema_json_editor
+            candidate: dict[str, Any] | None = None
+            try:
+                parsed_candidate = json.loads(st.session_state.schema_json_text)
+                if isinstance(parsed_candidate, dict):
+                    candidate = parsed_candidate
+            except json.JSONDecodeError:
+                pass
+            validate_json = st.button("Validate and use JSON", width="stretch")
+            if validate_json:
                 try:
-                    parsed = json.loads(st.session_state.schema_json)
+                    parsed = json.loads(st.session_state.schema_json_text)
                     if not isinstance(parsed, dict):
                         raise ValueError("Schema must be a JSON object")
                     validate_output_schema(parsed)
                     draft.schema = parsed
+                    if schema_supports_guided_editor(parsed):
+                        st.session_state.schema_rows = schema_to_field_rows(parsed)
                     st.success("Advanced schema is valid and will be used when saving.")
                 except Exception as exc:
                     st.error(f"Schema JSON: {exc}")
+            elif candidate != draft.schema:
+                st.warning("Advanced JSON has changed. Validate it before saving.")
 
 
 def _prompt_controls(draft: ProjectDraft) -> None:

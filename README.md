@@ -67,7 +67,9 @@ the guided schema beside `schema.json`, prompt editors beside their persistent
 rendered preview, and ordered settings beside the exact `project.yaml` that
 Save will write. Selected input data is copied into `data/` and the codebook
 into `context/` only when the project is saved. Preparation and all API
-operations remain CLI-only.
+operations remain CLI-only. Guided and Advanced JSON schema modes synchronize
+when the schema can be represented in both; advanced-only structures are
+preserved without being flattened.
 
 Prepare a deterministic pilot for inspection before making an API call:
 

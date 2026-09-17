@@ -263,6 +263,9 @@ def test_streamlit_gui_starts_without_api_calls(tmp_path, monkeypatch):
     assert "Update JSON" in [button.label for button in app.button]
     assert "Update prompt preview" in [button.label for button in app.button]
     assert "Save project and validate" in [button.label for button in app.button]
+    captions = "\n".join(caption.value for caption in app.caption)
+    assert "data/input.csv" in captions
+    assert "context/" in captions
     yaml_blocks = [str(block.value) for block in app.code if "project:" in str(block.value)]
     assert yaml_blocks
     yaml_text = yaml_blocks[0]
@@ -290,6 +293,51 @@ def test_streamlit_gui_file_pickers_load_input_and_codebook(tmp_path, monkeypatc
     assert not app.exception
     assert len(app.dataframe) >= 1
     assert any("Prompt placeholder" in caption.value for caption in app.caption)
+    assert any("Stable ID column" in str(block.value) for block in app.markdown)
+
+
+def test_streamlit_schema_modes_round_trip_without_losing_guided_data(tmp_path, monkeypatch):
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+    project = scaffold_project(tmp_path / "schema-project")
+    monkeypatch.setenv("KLLM_GUI_PROJECT_DIR", str(project))
+    app_path = Path(__file__).parents[1] / "src" / "kellogg_llm_batch" / "gui_app.py"
+    app = streamlit_testing.AppTest.from_file(str(app_path), default_timeout=10).run()
+
+    guided_rows = list(app.session_state["schema_rows"])
+    guided_rows[0] = {**guided_rows[0], "name": "guided_label"}
+    app.session_state["schema_rows"] = guided_rows
+    app.radio[0].set_value("Advanced JSON").run()
+    schema_editor = next(item for item in app.text_area if item.label == "schema.json")
+    assert '"guided_label"' in schema_editor.value
+
+    advanced_schema = {
+        "type": "object",
+        "properties": {"advanced_label": {"type": "string"}},
+        "required": ["advanced_label"],
+        "additionalProperties": False,
+    }
+    schema_editor.set_value(json.dumps(advanced_schema, indent=2)).run()
+    app.radio[0].set_value("Guided").run()
+
+    assert not app.exception
+    assert [row["name"] for row in app.session_state["schema_rows"]] == ["advanced_label"]
+
+    app.radio[0].set_value("Advanced JSON").run()
+    complex_schema = {
+        "type": "object",
+        "properties": {"evidence": {"type": "array", "items": {"type": "string"}}},
+        "required": ["evidence"],
+        "additionalProperties": False,
+    }
+    next(item for item in app.text_area if item.label == "schema.json").set_value(
+        json.dumps(complex_schema, indent=2)
+    ).run()
+    next(button for button in app.button if button.label == "Validate and use JSON").click().run()
+    app.radio[0].set_value("Guided").run()
+    assert any("advanced features" in error.value for error in app.error)
+    app.radio[0].set_value("Advanced JSON").run()
+
+    assert '"evidence"' in next(item for item in app.text_area if item.label == "schema.json").value
 
 
 def test_streamlit_gui_loads_existing_data_codebook_and_preview(example_config, monkeypatch):
