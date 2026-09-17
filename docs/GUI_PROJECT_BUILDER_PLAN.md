@@ -2,16 +2,17 @@
 
 ## Summary
 
-Add an optional local browser GUI that creates or reopens projects, maps input
-columns, loads a codebook, drafts schemas and prompts, previews a rendered
-prompt using one selected record, saves standard project files, and runs local
-validation.
+Add an optional local browser GUI that opens projects previously created by
+`kllm-batch init`, maps input columns, loads a codebook, drafts schemas and
+prompts, previews a rendered request, saves standard project files, and runs
+local validation.
 
 ## GUI workflow
 
-- Launch with `kllm-batch gui [PROJECT_DIRECTORY]`, with optional `--port` and
+- Launch with `kllm-batch gui PROJECT_DIRECTORY`, with optional `--port` and
   `--no-browser`.
-- Create a project or reopen an existing `project.yaml`.
+- Require an existing `project.yaml` created by `kllm-batch init`; show the
+  two-command init/open workflow at the top of the page.
 - Select CSV, Parquet, or JSONL data through a browser file picker; display
   dimensions and a preview.
 - Configure the ID, model-facing, required, and preserved columns.
@@ -21,7 +22,7 @@ validation.
   complex schemas.
 - Edit system and user prompts using starter templates.
 - Preview the exact rendered prompts for the first `rows_per_request` source
-  rows with `${codebook_json}` and `${records_json}`.
+  rows with `${codebook_json}` and `${records_json}`, wrapping long lines.
 - Provide sidebar links to every authoring section and show a valid JSON enum
   array example above the guided schema table.
 - Save `project.yaml`, `schema.json`, both prompt files, and the codebook
@@ -45,8 +46,8 @@ validation.
 ## Test plan
 
 - Test supported input formats, mappings, codebook copying, deterministic
-  rendering, schema modes, create/reopen round trips, atomic saving, validation
-  errors, and external-change conflicts.
+  rendering, schema modes, initialized-project reopen/save round trips, atomic
+  saving, validation errors, and external-change conflicts.
 - Confirm request preview starts at row one, respects `rows_per_request`, and
   never filters the saved dataset.
 - Exercise the interface through Streamlit's testing API.

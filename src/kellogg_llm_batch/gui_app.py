@@ -17,7 +17,6 @@ from kellogg_llm_batch.authoring import (
     field_rows_to_schema,
     load_input_table,
     load_project_draft,
-    new_project_draft,
     render_project_preview,
     save_project_draft,
     schema_supports_guided_editor,
@@ -59,6 +58,12 @@ def _apply_app_styles() -> None:
             font-size: 1rem !important;
             line-height: 1.5 !important;
         }
+        [data-testid="stCode"] pre,
+        [data-testid="stCode"] code {
+            white-space: pre-wrap !important;
+            overflow-wrap: anywhere !important;
+            word-break: break-word !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -70,12 +75,11 @@ def _render_sidebar_navigation() -> None:
         st.markdown("## Sections")
         st.markdown(
             """
-            - [1. Project](#project)
-            - [2. Input data and column mapping](#input-data)
-            - [3. Codebook](#codebook)
-            - [4. Output schema](#output-schema)
-            - [5. Prompts and request preview](#prompts-preview)
-            - [6. Settings, save, and validate](#settings-save)
+            - [1. Input data and column mapping](#input-data)
+            - [2. Codebook](#codebook)
+            - [3. Output schema](#output-schema)
+            - [4. Prompts and request preview](#prompts-preview)
+            - [5. Settings, save, and validate](#settings-save)
             """
         )
 
@@ -119,15 +123,13 @@ def _initialize_draft(draft: ProjectDraft) -> None:
     st.session_state.pop("codebook_upload_processed", None)
 
 
-def _load_or_create_initial_draft() -> None:
+def _load_initial_draft() -> None:
     if "draft" in st.session_state:
         return
     supplied = os.environ.get("KLLM_GUI_PROJECT_DIR")
-    root = Path(supplied).expanduser().resolve() if supplied else (Path.cwd() / "kllm-project").resolve()
-    if (root / "project.yaml").is_file() or root.name == "project.yaml":
-        _initialize_draft(load_project_draft(root))
-    else:
-        _initialize_draft(new_project_draft(root))
+    if not supplied:
+        raise RuntimeError("No initialized project was supplied. Run kllm-batch init PATH, then kllm-batch gui PATH.")
+    _initialize_draft(load_project_draft(Path(supplied).expanduser().resolve()))
 
 
 def _column_editor_rows(draft: ProjectDraft, frame: pd.DataFrame) -> pd.DataFrame:
@@ -194,30 +196,8 @@ def _show_validation(report: dict[str, Any]) -> None:
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
 
-def _project_controls() -> ProjectDraft:
-    st.subheader("1. Project", anchor="project")
-    st.caption("Create a new project draft or reopen an existing project.yaml. Nothing is written until Save project.")
-    st.text_input("Project directory", key="project_directory")
-    create_col, open_col = st.columns(2)
-    if create_col.button("Create new draft", width="stretch"):
-        try:
-            _initialize_draft(new_project_draft(st.session_state.project_directory))
-            st.rerun()
-        except Exception as exc:
-            st.error(str(exc))
-    if open_col.button("Open existing project", width="stretch"):
-        try:
-            _initialize_draft(load_project_draft(st.session_state.project_directory))
-            st.rerun()
-        except Exception as exc:
-            st.error(str(exc))
-    draft: ProjectDraft = st.session_state.draft
-    st.info(f"Editing: {draft.project_dir}")
-    return draft
-
-
 def _input_controls(draft: ProjectDraft) -> None:
-    st.subheader("2. Input data and column mapping", anchor="input-data")
+    st.subheader("1. Input data and column mapping", anchor="input-data")
     configured_path = str(draft.config["input"].get("path", ""))
     current_path = _resolved_config_path(draft, configured_path) if configured_path else ""
     if current_path:
@@ -289,7 +269,7 @@ def _input_controls(draft: ProjectDraft) -> None:
 
 
 def _codebook_controls(draft: ProjectDraft) -> None:
-    st.subheader("3. Codebook", anchor="codebook")
+    st.subheader("2. Codebook", anchor="codebook")
     current_path = str(draft.codebook_source or "")
     if current_path:
         st.info(f"Current codebook: {current_path}")
@@ -337,7 +317,7 @@ def _load_codebook(draft: ProjectDraft, source: Path) -> None:
 
 
 def _schema_controls(draft: ProjectDraft) -> None:
-    st.subheader("4. Output schema", anchor="output-schema")
+    st.subheader("3. Output schema", anchor="output-schema")
     mode = st.radio("Editor mode", ["Guided", "Advanced JSON"], horizontal=True, key="schema_mode")
     if mode == "Guided":
         st.info(
@@ -383,7 +363,7 @@ def _schema_controls(draft: ProjectDraft) -> None:
 
 
 def _prompt_controls(draft: ProjectDraft) -> None:
-    st.subheader("5. Prompts and request preview", anchor="prompts-preview")
+    st.subheader("4. Prompts and request preview", anchor="prompts-preview")
     st.text_area("System prompt", key="system_prompt", height=160)
     st.text_area("User prompt template", key="user_prompt", height=220)
     draft.system_prompt = st.session_state.system_prompt
@@ -408,15 +388,15 @@ def _prompt_controls(draft: ProjectDraft) -> None:
                 f"matching rows_per_request={rows_per_request}. This does not filter the saved project."
             )
             st.markdown("**System prompt sent to the provider**")
-            st.code(preview.system_prompt)
+            st.code(preview.system_prompt, language=None, wrap_lines=True)
             st.markdown("**Rendered user prompt sent to the provider**")
-            st.code(preview.user_prompt)
+            st.code(preview.user_prompt, language="json", wrap_lines=True)
         except Exception as exc:
             st.error(str(exc))
 
 
 def _settings_and_save(draft: ProjectDraft) -> None:
-    st.subheader("6. Settings, save, and validate", anchor="settings-save")
+    st.subheader("5. Settings, save, and validate", anchor="settings-save")
     config = draft.config
     project = config["project"]
     task = config["task"]
@@ -460,9 +440,14 @@ def run_app() -> None:
     _apply_app_styles()
     _render_sidebar_navigation()
     st.title("Kellogg LLM Batch Project Builder")
+    st.info(
+        "This GUI edits an initialized project. To create another project, run "
+        "`kllm-batch init PATH`, then open it with `kllm-batch gui PATH`."
+    )
     st.caption("Build and validate project files locally. This interface never submits API requests.")
-    _load_or_create_initial_draft()
-    draft = _project_controls()
+    _load_initial_draft()
+    draft: ProjectDraft = st.session_state.draft
+    st.caption(f"Editing initialized project: {draft.project_dir}")
     _input_controls(draft)
     _codebook_controls(draft)
     _schema_controls(draft)

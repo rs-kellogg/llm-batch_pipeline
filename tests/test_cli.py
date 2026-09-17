@@ -23,16 +23,19 @@ def test_help_lists_workflow_commands():
 def test_gui_command_launches_local_streamlit(tmp_path, monkeypatch):
     captured = {}
     monkeypatch.setattr("kellogg_llm_batch.cli.importlib.util.find_spec", lambda name: object())
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "project.yaml").write_text("version: 1\n", encoding="utf-8")
 
     def fake_run(command, env, check):
         captured.update(command=command, env=env, check=check)
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr("kellogg_llm_batch.cli.subprocess.run", fake_run)
-    result = runner.invoke(app, ["gui", str(tmp_path / "project"), "--port", "8765", "--no-browser"])
+    result = runner.invoke(app, ["gui", str(project), "--port", "8765", "--no-browser"])
 
     assert result.exit_code == 0
-    assert captured["env"]["KLLM_GUI_PROJECT_DIR"] == str((tmp_path / "project").resolve())
+    assert captured["env"]["KLLM_GUI_PROJECT_DIR"] == str(project.resolve())
     assert "127.0.0.1" in captured["command"]
     assert "8765" in captured["command"]
     assert "--server.headless" in captured["command"]
@@ -44,12 +47,22 @@ def test_gui_command_launches_local_streamlit(tmp_path, monkeypatch):
     assert captured["command"][captured["command"].index("--theme.baseRadius") + 1] == "medium"
 
 
-def test_gui_command_explains_missing_optional_dependency(monkeypatch):
+def test_gui_command_explains_missing_optional_dependency(tmp_path, monkeypatch):
     monkeypatch.setattr("kellogg_llm_batch.cli.importlib.util.find_spec", lambda name: None)
-    result = runner.invoke(app, ["gui"])
+    result = runner.invoke(app, ["gui", str(tmp_path / "project")])
     assert result.exit_code == 1
     assert "GUI dependencies are not installed" in result.stdout
     assert "python -m pip install -e '.[gui]'" in result.stdout
+
+
+def test_gui_command_requires_initialized_project(tmp_path, monkeypatch):
+    monkeypatch.setattr("kellogg_llm_batch.cli.importlib.util.find_spec", lambda name: object())
+    project = tmp_path / "not-initialized"
+    result = runner.invoke(app, ["gui", str(project)])
+
+    assert result.exit_code == 1
+    assert "Initialized project not found" in result.stdout
+    assert "Create it first with: kllm-batch init" in " ".join(result.stdout.split())
 
 
 def test_example_validate_command(example_config):

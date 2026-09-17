@@ -23,6 +23,7 @@ To use the optional local project-builder GUI, install the GUI extra instead:
 
 ```bash
 python -m pip install -e '.[gui]'
+kllm-batch init my-project
 kllm-batch gui my-project
 ```
 
@@ -55,13 +56,15 @@ kllm-batch init my-project
 kllm-batch validate -c my-project/project.yaml
 ```
 
-Researchers who prefer a form can use `kllm-batch gui my-project` instead. The
-GUI opens file-selection windows for input data and a codebook, maps columns,
-drafts the schema and prompts, previews the first complete request using
+After running `init`, researchers who prefer a form can open that project with
+`kllm-batch gui my-project`. The GUI only edits initialized projects. It opens
+file-selection windows for input data and a codebook, maps columns, drafts the
+schema and prompts, previews the first complete request using
 `rows_per_request`, saves explicitly, and runs the same local validation. A
-sidebar links directly to each authoring section. Selected input data is copied
-into `data/` and the codebook into `context/` only when the project is saved.
-Preparation and all API operations remain CLI-only.
+sidebar links directly to each authoring section, and rendered prompts wrap
+long lines instead of requiring horizontal scrolling. Selected input data is
+copied into `data/` and the codebook into `context/` only when the project is
+saved. Preparation and all API operations remain CLI-only.
 
 Prepare a deterministic pilot for inspection before making an API call:
 

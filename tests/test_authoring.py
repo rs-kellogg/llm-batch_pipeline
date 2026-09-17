@@ -20,6 +20,7 @@ from kellogg_llm_batch.authoring import (
     schema_to_field_rows,
 )
 from kellogg_llm_batch.core import prepare_run
+from kellogg_llm_batch.scaffold import scaffold_project
 from conftest import FakeAdapter
 
 
@@ -236,7 +237,8 @@ def test_complex_schema_requires_advanced_mode():
 
 def test_streamlit_gui_starts_without_api_calls(tmp_path, monkeypatch):
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
-    monkeypatch.setenv("KLLM_GUI_PROJECT_DIR", str(tmp_path / "new-project"))
+    project = scaffold_project(tmp_path / "new-project")
+    monkeypatch.setenv("KLLM_GUI_PROJECT_DIR", str(project))
     app_path = Path(__file__).parents[1] / "src" / "kellogg_llm_batch" / "gui_app.py"
 
     app = streamlit_testing.AppTest.from_file(str(app_path), default_timeout=10).run()
@@ -245,9 +247,14 @@ def test_streamlit_gui_starts_without_api_calls(tmp_path, monkeypatch):
     assert app.title[0].value == "Kellogg LLM Batch Project Builder"
     assert any('font-size: 1rem' in str(block.value) for block in app.markdown)
     assert any('stWidgetLabel' in str(block.value) for block in app.markdown)
+    assert any('white-space: pre-wrap' in str(block.value) for block in app.markdown)
     sidebar_text = "\n".join(str(block.value) for block in app.sidebar.markdown)
-    assert "#project" in sidebar_text
+    assert "#input-data" in sidebar_text
+    assert "#project" not in sidebar_text
     assert "#prompts-preview" in sidebar_text
+    assert "Project directory" not in [item.label for item in app.text_input]
+    assert "Create new draft" not in [button.label for button in app.button]
+    assert any("kllm-batch init PATH" in message.value for message in app.info)
     assert any("Enum example" in message.value for message in app.info)
     assert "Preview source row (1-based)" not in [item.label for item in app.number_input]
     assert "Save project and validate" in [button.label for button in app.button]
@@ -255,7 +262,8 @@ def test_streamlit_gui_starts_without_api_calls(tmp_path, monkeypatch):
 
 def test_streamlit_gui_file_pickers_load_input_and_codebook(tmp_path, monkeypatch):
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
-    monkeypatch.setenv("KLLM_GUI_PROJECT_DIR", str(tmp_path / "new-project"))
+    project = scaffold_project(tmp_path / "new-project")
+    monkeypatch.setenv("KLLM_GUI_PROJECT_DIR", str(project))
     app_path = Path(__file__).parents[1] / "src" / "kellogg_llm_batch" / "gui_app.py"
     app = streamlit_testing.AppTest.from_file(str(app_path), default_timeout=10).run()
 
@@ -277,12 +285,12 @@ def test_streamlit_gui_loads_existing_data_codebook_and_preview(example_config, 
     app_path = Path(__file__).parents[1] / "src" / "kellogg_llm_batch" / "gui_app.py"
 
     app = streamlit_testing.AppTest.from_file(str(app_path), default_timeout=10).run()
-    app.button[2].click().run()  # Load input
+    app.button[0].click().run()  # Load input
     assert not app.exception
     assert len(app.dataframe) >= 2
-    app.button[3].click().run()  # Load codebook
+    app.button[1].click().run()  # Load codebook
     assert not app.exception
-    app.button[4].click().run()  # Render prompt preview
+    app.button[2].click().run()  # Render prompt preview
 
     assert not app.exception
     rendered = "\n".join(str(block.value) for block in app.code)
@@ -302,9 +310,9 @@ def test_streamlit_gui_reopens_saves_and_validates(example_config, tmp_path, mon
     app_path = Path(__file__).parents[1] / "src" / "kellogg_llm_batch" / "gui_app.py"
 
     app = streamlit_testing.AppTest.from_file(str(app_path), default_timeout=10).run()
-    app.button[2].click().run()  # Load input
-    app.button[3].click().run()  # Load copied codebook
-    app.button[5].click().run()  # Save project and validate
+    app.button[0].click().run()  # Load input
+    app.button[1].click().run()  # Load copied codebook
+    app.button[3].click().run()  # Save project and validate
 
     assert not app.exception
     messages = [message.value for message in app.success]

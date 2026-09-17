@@ -53,23 +53,29 @@ def init_command(directory: Path = typer.Argument(..., help="Empty directory to 
 
 @app.command("gui")
 def gui_command(
-    project_directory: Optional[Path] = typer.Argument(None, help="New or existing project directory to open."),
+    project_directory: Path = typer.Argument(..., help="Project directory previously created with kllm-batch init."),
     port: int = typer.Option(8501, min=1, max=65535, help="Local browser port."),
     no_browser: bool = typer.Option(False, "--no-browser", help="Start the local server without opening a browser window."),
 ):
     """Open the optional local project builder; this makes no provider calls.
 
-    Example: `kllm-batch gui my-project`. Install the optional `gui` package
-    extra first. The server binds only to 127.0.0.1.
+    First run `kllm-batch init my-project`, then `kllm-batch gui my-project`.
+    Install the optional `gui` package extra first. The server binds only to
+    127.0.0.1.
     """
     if importlib.util.find_spec("streamlit") is None:
         console.print("[bold red]GUI dependencies are not installed.[/bold red]")
         console.print("Install them with: python -m pip install -e '.[gui]'", markup=False)
         raise typer.Exit(1)
+    project_directory = project_directory.expanduser().resolve()
+    project_file = project_directory if project_directory.name == "project.yaml" else project_directory / "project.yaml"
+    if not project_file.is_file():
+        console.print(f"[bold red]Initialized project not found:[/bold red] {project_file}")
+        console.print(f"Create it first with: kllm-batch init {project_directory}", markup=False)
+        raise typer.Exit(1)
     script = Path(__file__).with_name("gui_app.py")
     environment = os.environ.copy()
-    if project_directory is not None:
-        environment["KLLM_GUI_PROJECT_DIR"] = str(project_directory.expanduser().resolve())
+    environment["KLLM_GUI_PROJECT_DIR"] = str(project_file.parent)
     command = [
         sys.executable,
         "-m",
