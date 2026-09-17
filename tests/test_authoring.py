@@ -171,6 +171,48 @@ def test_new_project_without_codebook_uses_records_only_prompt(tmp_path):
         new_project_draft(draft.project_dir)
 
 
+@pytest.mark.parametrize("same_content", [True, False])
+def test_codebook_selection_preserves_unmanaged_context_file(tmp_path, same_content):
+    source = tmp_path / "source.csv"
+    pd.DataFrame([{"id": "A", "text": "Alpha"}]).to_csv(source, index=False)
+    draft = new_project_draft(tmp_path / "project")
+    draft.config["providers"] = {"openai": {"model": "gpt-5-mini"}}
+    draft.config["input"].update(
+        {
+            "path": str(source),
+            "id_column": "id",
+            "fields_sent": {"text": "text"},
+            "required_fields": ["text"],
+        }
+    )
+    save_project_draft(draft)
+    reopened = load_project_draft(draft.project_dir)
+    existing = reopened.project_dir / "context" / "codebook.csv"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("label,definition\nold,Existing\n", encoding="utf-8")
+    selected = tmp_path / "selection" / "codebook.csv"
+    selected.parent.mkdir()
+    selected.write_text(
+        existing.read_text(encoding="utf-8") if same_content else "label,definition\nnew,Selected\n",
+        encoding="utf-8",
+    )
+    reopened.codebook_source = selected
+    reopened.config["prompt"]["context"] = {
+        "codebook": {"path": str(selected), "format": "auto"}
+    }
+
+    result = save_project_draft(reopened)
+    saved = yaml.safe_load(result.project_file.read_text(encoding="utf-8"))
+    saved_path = saved["prompt"]["context"]["codebook"]["path"]
+
+    assert existing.read_text(encoding="utf-8") == "label,definition\nold,Existing\n"
+    if same_content:
+        assert saved_path == "context/codebook.csv"
+    else:
+        assert saved_path.startswith("context/codebook-")
+        assert (reopened.project_dir / saved_path).read_text(encoding="utf-8") == selected.read_text(encoding="utf-8")
+
+
 def test_complex_schema_requires_advanced_mode():
     schema = {
         "type": "object",

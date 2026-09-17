@@ -344,14 +344,19 @@ def save_project_draft(draft: ProjectDraft) -> SaveResult:
             raise FileNotFoundError(f"Codebook not found: {source}")
         codebook_destination = Path("context") / source.name
         existing_destination = root / codebook_destination
+        source_hash = sha256_file(source)
         if (
             existing_destination.is_file()
             and str(codebook_destination) not in draft.original_hashes
             and existing_destination.resolve() != source
+            and sha256_file(existing_destination) != source_hash
         ):
-            raise FileExistsError(
-                f"Refusing to overwrite an unmanaged context file: {existing_destination}"
+            codebook_destination = Path("context") / (
+                f"{source.stem}-{source_hash[:8]}{source.suffix.lower()}"
             )
+            existing_destination = root / codebook_destination
+            if existing_destination.is_file() and sha256_file(existing_destination) != source_hash:
+                raise FileExistsError(f"Refusing to overwrite an existing context file: {existing_destination}")
         context["codebook"] = {"path": str(codebook_destination), "format": "auto"}
     else:
         context.pop("codebook", None)
