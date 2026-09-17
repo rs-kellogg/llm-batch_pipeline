@@ -48,11 +48,26 @@ class ProjectDraft:
 
 @dataclass
 class PreviewResult:
-    source_row: int
-    record_id: str
+    source_rows: list[int]
+    record_ids: list[str]
     system_prompt: str
     user_prompt: str
-    record: dict[str, Any]
+    records: list[dict[str, Any]]
+
+    @property
+    def source_row(self) -> int:
+        """First previewed source row, retained for API compatibility."""
+        return self.source_rows[0]
+
+    @property
+    def record_id(self) -> str:
+        """First previewed record ID, retained for API compatibility."""
+        return self.record_ids[0]
+
+    @property
+    def record(self) -> dict[str, Any]:
+        """First previewed record, retained for API compatibility."""
+        return self.records[0]
 
 
 @dataclass
@@ -171,7 +186,7 @@ def _draft_context(draft: ProjectDraft) -> dict[str, str]:
     return values
 
 
-def render_project_preview(draft: ProjectDraft, source_row: int = 0) -> PreviewResult:
+def render_project_preview(draft: ProjectDraft, source_row: int = 0, row_count: int = 1) -> PreviewResult:
     config = _project_config_from_draft(draft)
     source = config.resolve(config.input.path)
     frame, _ = load_input_table(source, config.input.format, config.input.csv_encoding)
@@ -180,16 +195,18 @@ def render_project_preview(draft: ProjectDraft, source_row: int = 0) -> PreviewR
         raise ValueError("Input contains no records")
     if source_row < 0 or source_row >= len(records):
         raise IndexError(f"Preview row {source_row} is outside 0..{len(records) - 1}")
-    record = records[source_row]
-    prompt_record = {"record_id": record.record_id, **record.sent}
+    if row_count < 1:
+        raise ValueError("Preview row_count must be at least 1")
+    selected = records[source_row : source_row + row_count]
+    prompt_records = [{"record_id": record.record_id, **record.sent} for record in selected]
     context = _draft_context(draft)
     validate_template(draft.user_prompt, context)
     return PreviewResult(
-        source_row=source_row,
-        record_id=record.record_id,
+        source_rows=list(range(source_row, source_row + len(selected))),
+        record_ids=[record.record_id for record in selected],
         system_prompt=draft.system_prompt,
-        user_prompt=render_user_prompt(draft.user_prompt, [prompt_record], context),
-        record=prompt_record,
+        user_prompt=render_user_prompt(draft.user_prompt, prompt_records, context),
+        records=prompt_records,
     )
 
 

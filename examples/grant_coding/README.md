@@ -22,10 +22,12 @@ kllm-batch gui examples/grant_coding
 
 The GUI can reopen this project, select input data and a codebook through file
 picker windows, edit mappings, schema, and prompts, preview a rendered
-single-record prompt, and run local validation. Selected files are copied into
+request containing the first `rows_per_request` records, and run local
+validation. Its sidebar links to every section, and the guided schema editor
+shows the required JSON-array syntax for enums. Selected files are copied into
 the project only when it is saved. The GUI never submits API requests and opens
-with Streamlit's light base theme and larger, sans-serif interface type. Because
-this is a checked-in example, create a separate project before saving
+with Streamlit's light base theme and larger, sans-serif interface type.
+Because this is a checked-in example, create a separate project before saving
 experiments you do not want to keep.
 
 ### Starting your own project with `init`

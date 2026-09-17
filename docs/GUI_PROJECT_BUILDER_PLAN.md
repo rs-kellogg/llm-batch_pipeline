@@ -20,8 +20,10 @@ validation.
 - Draft scalar schemas through a guided editor, with advanced JSON editing for
   complex schemas.
 - Edit system and user prompts using starter templates.
-- Select one source row and preview the exact rendered prompts with
-  `${codebook_json}` and `${records_json}`.
+- Preview the exact rendered prompts for the first `rows_per_request` source
+  rows with `${codebook_json}` and `${records_json}`.
+- Provide sidebar links to every authoring section and show a valid JSON enum
+  array example above the guided schema table.
 - Save `project.yaml`, `schema.json`, both prompt files, and the codebook
   atomically, then run local validation.
 - Make no provider calls and request no credentials.
@@ -45,7 +47,8 @@ validation.
 - Test supported input formats, mappings, codebook copying, deterministic
   rendering, schema modes, create/reopen round trips, atomic saving, validation
   errors, and external-change conflicts.
-- Confirm preview-row selection never filters the saved dataset.
+- Confirm request preview starts at row one, respects `rows_per_request`, and
+  never filters the saved dataset.
 - Exercise the interface through Streamlit's testing API.
 - Test missing dependencies, custom ports, and `--no-browser`.
 - Validate and prepare a GUI-generated project through the existing CLI.

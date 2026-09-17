@@ -85,10 +85,14 @@ def test_guided_schema_round_trip_and_nullable_enum():
 def test_preview_save_validate_and_reopen_preserves_settings(example_config, tmp_path):
     draft = _configured_draft(example_config, tmp_path)
     draft.config["providers"]["openai"]["options"] = {"temperature": 0}
-    preview = render_project_preview(draft, source_row=4)
+    preview = render_project_preview(draft, source_row=4, row_count=3)
 
     assert preview.record_id == "GRANT-005"
+    assert preview.record_ids == ["GRANT-005", "GRANT-006", "GRANT-007"]
+    assert preview.source_rows == [4, 5, 6]
     assert '"record_id":"GRANT-005"' in preview.user_prompt
+    assert '"record_id":"GRANT-006"' in preview.user_prompt
+    assert '"record_id":"GRANT-007"' in preview.user_prompt
     assert '"abstract"' in preview.user_prompt
     assert "GRANT-001" not in preview.user_prompt
 
@@ -241,6 +245,11 @@ def test_streamlit_gui_starts_without_api_calls(tmp_path, monkeypatch):
     assert app.title[0].value == "Kellogg LLM Batch Project Builder"
     assert any('font-size: 1rem' in str(block.value) for block in app.markdown)
     assert any('stWidgetLabel' in str(block.value) for block in app.markdown)
+    sidebar_text = "\n".join(str(block.value) for block in app.sidebar.markdown)
+    assert "#project" in sidebar_text
+    assert "#prompts-preview" in sidebar_text
+    assert any("Enum example" in message.value for message in app.info)
+    assert "Preview source row (1-based)" not in [item.label for item in app.number_input]
     assert "Save project and validate" in [button.label for button in app.button]
 
 
@@ -278,7 +287,11 @@ def test_streamlit_gui_loads_existing_data_codebook_and_preview(example_config, 
     assert not app.exception
     rendered = "\n".join(str(block.value) for block in app.code)
     assert "GRANT-001" in rendered
+    assert "GRANT-002" in rendered
+    assert "GRANT-003" in rendered
+    assert "GRANT-004" not in rendered
     assert "financial" in rendered
+    assert any("source rows 1–3" in caption.value for caption in app.caption)
 
 
 def test_streamlit_gui_reopens_saves_and_validates(example_config, tmp_path, monkeypatch):

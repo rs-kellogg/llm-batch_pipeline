@@ -65,6 +65,21 @@ def _apply_app_styles() -> None:
     )
 
 
+def _render_sidebar_navigation() -> None:
+    with st.sidebar:
+        st.markdown("## Sections")
+        st.markdown(
+            """
+            - [1. Project](#project)
+            - [2. Input data and column mapping](#input-data)
+            - [3. Codebook](#codebook)
+            - [4. Output schema](#output-schema)
+            - [5. Prompts and request preview](#prompts-preview)
+            - [6. Settings, save, and validate](#settings-save)
+            """
+        )
+
+
 def _resolved_config_path(draft: ProjectDraft, value: str) -> str:
     path = Path(value).expanduser()
     return str(path if path.is_absolute() else (draft.project_dir / path).resolve())
@@ -180,7 +195,7 @@ def _show_validation(report: dict[str, Any]) -> None:
 
 
 def _project_controls() -> ProjectDraft:
-    st.subheader("1. Project")
+    st.subheader("1. Project", anchor="project")
     st.caption("Create a new project draft or reopen an existing project.yaml. Nothing is written until Save project.")
     st.text_input("Project directory", key="project_directory")
     create_col, open_col = st.columns(2)
@@ -202,7 +217,7 @@ def _project_controls() -> ProjectDraft:
 
 
 def _input_controls(draft: ProjectDraft) -> None:
-    st.subheader("2. Input data and column mapping")
+    st.subheader("2. Input data and column mapping", anchor="input-data")
     configured_path = str(draft.config["input"].get("path", ""))
     current_path = _resolved_config_path(draft, configured_path) if configured_path else ""
     if current_path:
@@ -274,7 +289,7 @@ def _input_controls(draft: ProjectDraft) -> None:
 
 
 def _codebook_controls(draft: ProjectDraft) -> None:
-    st.subheader("3. Codebook")
+    st.subheader("3. Codebook", anchor="codebook")
     current_path = str(draft.codebook_source or "")
     if current_path:
         st.info(f"Current codebook: {current_path}")
@@ -322,9 +337,13 @@ def _load_codebook(draft: ProjectDraft, source: Path) -> None:
 
 
 def _schema_controls(draft: ProjectDraft) -> None:
-    st.subheader("4. Output schema")
+    st.subheader("4. Output schema", anchor="output-schema")
     mode = st.radio("Editor mode", ["Guided", "Advanced JSON"], horizontal=True, key="schema_mode")
     if mode == "Guided":
+        st.info(
+            'Enum example: `["financial", "organizational", "technical", "other"]`. '
+            "Use double quotes and square brackets; leave the cell blank when a field has no fixed choices."
+        )
         rows = pd.DataFrame(st.session_state.schema_rows)
         edited = st.data_editor(
             rows,
@@ -336,7 +355,10 @@ def _schema_controls(draft: ProjectDraft) -> None:
                 "name": "Output field",
                 "type": st.column_config.SelectboxColumn("Type", options=["string", "integer", "number", "boolean"]),
                 "nullable": "Allow null",
-                "enum_json": "Optional enum as JSON array",
+                "enum_json": st.column_config.TextColumn(
+                    "Optional enum as JSON array",
+                    help='Example: ["financial", "organizational", "technical", "other"]',
+                ),
                 "description": "Description",
                 "minimum": "Minimum (numeric only)",
                 "maximum": "Maximum (numeric only)",
@@ -361,18 +383,30 @@ def _schema_controls(draft: ProjectDraft) -> None:
 
 
 def _prompt_controls(draft: ProjectDraft) -> None:
-    st.subheader("5. Prompts and single-record preview")
+    st.subheader("5. Prompts and request preview", anchor="prompts-preview")
     st.text_area("System prompt", key="system_prompt", height=160)
     st.text_area("User prompt template", key="user_prompt", height=220)
     draft.system_prompt = st.session_state.system_prompt
     draft.user_prompt = st.session_state.user_prompt
-    frame: pd.DataFrame | None = st.session_state.get("input_frame")
-    max_row = max(1, len(frame)) if frame is not None else 1
-    selected = st.number_input("Preview source row (1-based)", min_value=1, max_value=max_row, value=1)
+    task = draft.config["task"]
+    rows_per_request = int(
+        st.number_input(
+            "Rows per API request",
+            min_value=1,
+            value=int(task.get("rows_per_request", 10)),
+            help="The preview starts at the first source row and uses this many records, matching a real request.",
+        )
+    )
+    task["rows_per_request"] = rows_per_request
     if st.button("Render prompt preview"):
         try:
-            preview = render_project_preview(draft, int(selected) - 1)
-            st.caption(f"Previewing source row {preview.source_row + 1}, record_id={preview.record_id}. This does not filter the saved project.")
+            preview = render_project_preview(draft, source_row=0, row_count=rows_per_request)
+            first_row = preview.source_rows[0] + 1
+            last_row = preview.source_rows[-1] + 1
+            st.caption(
+                f"Previewing source rows {first_row}–{last_row} ({len(preview.records)} records), "
+                f"matching rows_per_request={rows_per_request}. This does not filter the saved project."
+            )
             st.markdown("**System prompt sent to the provider**")
             st.code(preview.system_prompt)
             st.markdown("**Rendered user prompt sent to the provider**")
@@ -382,7 +416,7 @@ def _prompt_controls(draft: ProjectDraft) -> None:
 
 
 def _settings_and_save(draft: ProjectDraft) -> None:
-    st.subheader("6. Settings, save, and validate")
+    st.subheader("6. Settings, save, and validate", anchor="settings-save")
     config = draft.config
     project = config["project"]
     task = config["task"]
@@ -392,7 +426,6 @@ def _settings_and_save(draft: ProjectDraft) -> None:
     project["name"] = st.text_input("Project name", value=project.get("name", ""))
     project["description"] = st.text_input("Description", value=project.get("description", ""))
     prompt["version"] = st.text_input("Prompt version", value=str(prompt.get("version", "1.0")))
-    task["rows_per_request"] = int(st.number_input("Rows per API request", min_value=1, value=int(task.get("rows_per_request", 10))))
     with st.expander("Provider, token, and budget settings"):
         existing = config.get("providers", {})
         selected = st.multiselect("Providers", ["openai", "anthropic"], default=list(existing) or ["openai"])
@@ -425,6 +458,7 @@ def _settings_and_save(draft: ProjectDraft) -> None:
 def run_app() -> None:
     st.set_page_config(page_title="Kellogg LLM Batch Project Builder", layout="wide")
     _apply_app_styles()
+    _render_sidebar_navigation()
     st.title("Kellogg LLM Batch Project Builder")
     st.caption("Build and validate project files locally. This interface never submits API requests.")
     _load_or_create_initial_draft()

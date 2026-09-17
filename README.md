@@ -57,10 +57,11 @@ kllm-batch validate -c my-project/project.yaml
 
 Researchers who prefer a form can use `kllm-batch gui my-project` instead. The
 GUI opens file-selection windows for input data and a codebook, maps columns,
-drafts the schema and prompts, previews one rendered record, saves explicitly,
-and runs the same local validation. Selected input data is copied into `data/`
-and the codebook into `context/` only when the project is saved. Preparation
-and all API operations remain CLI-only.
+drafts the schema and prompts, previews the first complete request using
+`rows_per_request`, saves explicitly, and runs the same local validation. A
+sidebar links directly to each authoring section. Selected input data is copied
+into `data/` and the codebook into `context/` only when the project is saved.
+Preparation and all API operations remain CLI-only.
 
 Prepare a deterministic pilot for inspection before making an API call:
 
