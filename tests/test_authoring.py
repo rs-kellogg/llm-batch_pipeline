@@ -263,9 +263,14 @@ def test_streamlit_gui_starts_without_api_calls(tmp_path, monkeypatch):
     assert "Update JSON" in [button.label for button in app.button]
     assert "Update prompt preview" in [button.label for button in app.button]
     assert "Save project and validate" in [button.label for button in app.button]
+    assert any("Saving overwrites the existing managed" in warning.value for warning in app.warning)
     captions = "\n".join(caption.value for caption in app.caption)
     assert "data/input.csv" in captions
     assert "context/" in captions
+    markdown_text = "\n".join(str(block.value) for block in app.markdown)
+    assert "prompts/system.txt" in markdown_text
+    assert "prompts/user.txt" in markdown_text
+    assert "kllm-save-note" in markdown_text
     yaml_blocks = [str(block.value) for block in app.code if "project:" in str(block.value)]
     assert yaml_blocks
     yaml_text = yaml_blocks[0]

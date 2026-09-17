@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from html import escape
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,29 @@ def _apply_app_styles() -> None:
             font-weight: 700;
             line-height: 1.35;
             margin: 1.1rem 0 0.2rem 0;
+        }
+        .kllm-prompt-label {
+            align-items: baseline;
+            display: flex;
+            font-size: 1rem;
+            font-weight: 600;
+            gap: 1rem;
+            justify-content: space-between;
+            line-height: 1.4;
+            margin: 0.35rem 0 0.25rem 0;
+        }
+        .kllm-prompt-file {
+            color: #4E2A84;
+            font-family: monospace;
+            font-weight: 700;
+            text-align: right;
+        }
+        .kllm-save-note {
+            color: #4E2A84;
+            font-size: 1rem;
+            font-weight: 700;
+            line-height: 1.45;
+            margin: 0.25rem 0 0.75rem 0;
         }
         </style>
         """,
@@ -504,11 +528,28 @@ def _schema_controls(draft: ProjectDraft) -> None:
 
 def _prompt_controls(draft: ProjectDraft) -> None:
     st.subheader("4. Prompts and request preview", anchor="prompts-preview")
+    prompt_config = draft.config["prompt"]
+    system_file = str(prompt_config.get("system_file", "prompts/system.txt"))
+    user_file = str(prompt_config.get("user_file", "prompts/user.txt"))
+    st.markdown(
+        '<p class="kllm-save-note">Save project and validate writes editor changes back to the configured files.</p>',
+        unsafe_allow_html=True,
+    )
     editor_col, preview_col = st.columns([1, 1], gap="large")
     with editor_col:
         st.markdown("#### Prompt editor")
-        st.text_area("System prompt", key="system_prompt", height=180)
-        st.text_area("User prompt template", key="user_prompt", height=260)
+        st.markdown(
+            f'<div class="kllm-prompt-label"><span>System prompt</span>'
+            f'<span class="kllm-prompt-file">{escape(system_file)}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.text_area("System prompt", key="system_prompt", height=180, label_visibility="collapsed")
+        st.markdown(
+            f'<div class="kllm-prompt-label"><span>User prompt template</span>'
+            f'<span class="kllm-prompt-file">{escape(user_file)}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.text_area("User prompt template", key="user_prompt", height=260, label_visibility="collapsed")
         draft.system_prompt = st.session_state.system_prompt
         draft.user_prompt = st.session_state.user_prompt
         task = draft.config["task"]
@@ -629,7 +670,13 @@ def _settings_and_save(draft: ProjectDraft) -> None:
         except Exception as exc:
             st.error(f"Cannot render project.yaml yet: {exc}")
 
-    if st.button("Save project and validate", type="primary", width="stretch"):
+    save_requested = st.button("Save project and validate", type="primary", width="stretch")
+    st.warning(
+        "Saving overwrites the existing managed project configuration, schema, and prompt files. "
+        "Review the JSON and YAML previews first. If a managed file changed after this GUI loaded it, "
+        "the save is blocked instead of overwriting that external change."
+    )
+    if save_requested:
         try:
             draft.project_dir = Path(st.session_state.project_directory).expanduser().resolve()
             draft.system_prompt = st.session_state.system_prompt
