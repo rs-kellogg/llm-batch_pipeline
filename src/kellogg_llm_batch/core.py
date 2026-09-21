@@ -29,6 +29,24 @@ from .utils import RunLock, atomic_write_json, json_default, sha256_file, sha256
 from .validation import validate_project
 
 
+RETRYABLE_FAILURE_CATEGORIES = frozenset(
+    {
+        "errored",
+        "expired",
+        "cancelled",
+        "canceled",  # Anthropic result spelling
+        "batch_cancelled",  # OpenAI batch error code
+        "unknown",
+        "sync_request_error",
+        "malformed_output",
+        "schema_violation",
+        "missing_output",
+        "missing_request_output",
+        "duplicate_output_id",
+    }
+)
+
+
 def _json_line(obj: dict[str, Any]) -> bytes:
     return (json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
 
@@ -844,8 +862,12 @@ def prepare_retry(run: str | Path) -> Path:
         raise FileNotFoundError("No failures were recorded; sync and audit the run first")
     if failures.empty:
         raise ValueError("The run has no failed records to retry")
-    retryable = {"errored", "expired", "cancelled", "unknown", "sync_request_error", "malformed_output", "schema_violation", "missing_output", "missing_request_output", "duplicate_output_id"}
-    selected = set(failures.loc[failures["category"].isin(retryable), "record_id"].astype(str))
+    selected = set(
+        failures.loc[
+            failures["category"].isin(RETRYABLE_FAILURE_CATEGORIES),
+            "record_id",
+        ].astype(str)
+    )
     if not selected:
         raise ValueError("No retryable failed records were found")
     manifest = _manifest(run_dir)

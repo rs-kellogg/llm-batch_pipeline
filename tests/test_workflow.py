@@ -344,6 +344,41 @@ def test_manual_retry_contains_only_failed_rows(example_config, tmp_path, monkey
     assert json.loads((child / "manifest.json").read_text())["parent_run"] == str(run)
 
 
+@pytest.mark.parametrize("category", ["batch_cancelled", "canceled", "cancelled"])
+def test_retry_selects_provider_cancellation_categories(
+    example_config, tmp_path, monkeypatch, category
+):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    run = prepare_run(_temporary_config(example_config, tmp_path), "openai")
+    selected_id = str(
+        pd.read_parquet(run / "input_snapshot" / "canonical_input.parquet").iloc[0][
+            "record_id"
+        ]
+    )
+    (run / "outputs").mkdir()
+    (run / "outputs" / "failures.jsonl").write_text(
+        json.dumps(
+            {
+                "record_id": selected_id,
+                "custom_id": "request_00000000",
+                "category": category,
+                "message": "batch was canceled",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    child = prepare_retry(run)
+
+    child_input = pd.read_parquet(child / "input_snapshot" / "canonical_input.parquet")
+    assert child_input["record_id"].astype(str).tolist() == [selected_id]
+    child_manifest = json.loads((child / "manifest.json").read_text(encoding="utf-8"))
+    assert child_manifest["purpose"] == "retry"
+    assert child_manifest["parent_run"] == str(run)
+
+
 def test_retry_blocks_if_source_changed(example_config, tmp_path, monkeypatch):
     fake = IncompleteAdapter()
     monkeypatch.setattr(core, "get_provider", lambda name: fake)

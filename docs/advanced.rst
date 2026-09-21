@@ -113,7 +113,20 @@ A selected run defaults to ``sync`` execution; a full run defaults to
 processing, audit, and provenance code.
 
 To intentionally recode successful records, put their source IDs in a text
-file and prepare a separate run:
+file. For example, ``rerun_ids.txt`` could contain:
+
+.. code-block:: text
+
+   GRANT-002
+   GRANT-007
+   GRANT-014
+
+Use the values from the source column configured as ``input.id_column``. The
+file must be UTF-8 text with one ID per line, no header, and no commas. Blank
+lines are ignored; duplicate IDs and IDs that do not exist in the configured
+source are rejected.
+
+Prepare a separate run from that file:
 
 .. code-block:: console
 
@@ -189,6 +202,38 @@ too high.
 
 Monitor and recover a run
 -------------------------
+
+Cancel and continue safely
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Cancellation stops outstanding provider work but does not discard requests
+that already finished. OpenAI can expose partial output after a batch reaches
+``cancelled``; Anthropic can finish non-interruptible requests already underway
+and reports an outcome for each request when the batch ends.
+
+After requesting cancellation, use ``sync --watch`` to wait for the provider's
+terminal state and process every result that is available. Then retry only the
+canceled, failed, or missing records and merge them with the original
+successes:
+
+.. code-block:: console
+
+   $ kllm-batch cancel RUN_ID
+   $ kllm-batch sync RUN_ID --watch
+   $ kllm-batch retry RUN_ID
+   $ kllm-batch submit CHILD_RUN_ID
+   $ kllm-batch sync CHILD_RUN_ID --watch  # batch children only
+   $ kllm-batch merge CHILD_RUN_ID
+
+Do not run ``submit`` again on the canceled parent: the remote batch itself is
+not resumable. ``retry`` recognizes the cancellation categories returned by
+both providers and prepares a new linked run for the unfinished records. A
+manual ``rerun_ids.txt`` is therefore unnecessary for normal cancellation
+recovery; use ``--ids-file`` only when deliberately choosing a different
+subset.
+
+Other recovery commands
+~~~~~~~~~~~~~~~~~~~~~~~
 
 * ``status RUN_ID`` refreshes a batch run's remote status once.
 * ``cancel RUN_ID`` requests cancellation without deleting local artifacts;
