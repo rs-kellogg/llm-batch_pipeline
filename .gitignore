@@ -9,3 +9,4 @@ build/
 .env
 runs/
 examples/*/runs/
+docs/_build/
