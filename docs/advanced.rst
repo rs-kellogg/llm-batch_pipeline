@@ -3,8 +3,94 @@
 Advanced workflows
 ==================
 
-Selection and execution modes
------------------------------
+Most researchers come here for one of two reasons: a completed run has failed
+records to retry, or two completed runs need to be compared. Start with the
+relevant workflow below; configuration, recovery, and provenance details
+follow afterward.
+
+.. contents:: On this page
+   :local:
+   :depth: 2
+
+.. _retries-and-reruns:
+
+Retry failed records and merge the results
+------------------------------------------
+
+Use a retry chain when ``outputs/failures.jsonl`` contains retryable provider,
+request, malformed-output, schema, or missing-output failures. The original
+run and its raw responses remain unchanged.
+
+#. Inspect ``outputs/failures.jsonl`` and the run's audit report.
+#. Prepare a child run containing only retryable failed records:
+
+   .. code-block:: console
+
+      $ kllm-batch retry RUN_ID
+
+#. Review the child run's ``REVIEW.md``, payloads, and cost estimate, then run
+   it through its recorded execution mode:
+
+   .. code-block:: console
+
+      $ kllm-batch submit CHILD_RUN_ID
+      $ kllm-batch sync CHILD_RUN_ID --watch  # batch children only
+
+#. Combine successful parent and child results, preferring the newest valid
+   attempt for each record:
+
+   .. code-block:: console
+
+      $ kllm-batch merge CHILD_RUN_ID
+
+``retry`` and ``merge`` are local and free; ``retry`` never submits
+automatically. The merged files are written to the child run as
+``outputs/merged.parquet`` and ``outputs/merged.csv``. Missing rows remain
+visible rather than being silently filled.
+
+If a child run also has retryable failures, run ``retry`` on that child and
+later run ``merge`` on the newest descendant. The attempt chain preserves the
+history while the merge walks back through every parent.
+
+Compare providers or repeated runs
+----------------------------------
+
+``compare`` is useful for assessing robustness across providers, models,
+prompt versions, or repeated runs. For the clearest interpretation, use the
+same selected record IDs and the same output schema in both processed runs.
+
+For example, prepare the same deterministic pilot for both providers:
+
+.. code-block:: console
+
+   $ kllm-batch prepare -c my-project/project.yaml --provider openai \
+       --sample-size 100 --seed 42
+   $ kllm-batch prepare -c my-project/project.yaml --provider anthropic \
+       --sample-size 100 --seed 42
+
+Review, submit, and process both runs. Then compare them:
+
+.. code-block:: console
+
+   $ kllm-batch compare OPENAI_RUN_ID ANTHROPIC_RUN_ID
+
+Runs are joined by ``record_id``, never row order. For fields defined with
+``enum`` in the first run's schema, the comparison reports the number compared,
+percent agreement, and Cohen's kappa. It also counts records found in only one
+run.
+
+The command creates a sibling directory named
+``comparison_RUN_A_vs_RUN_B`` containing:
+
+* ``comparison.json`` with agreement metrics and record counts; and
+* ``disagreements.csv`` with missing records and categorical disagreements for
+  human review.
+
+Comparison is local and free. It does not use another model to adjudicate
+differences; the exported disagreements are intended for researcher review.
+
+Select or intentionally rerun records
+-------------------------------------
 
 ``prepare`` supports three record-selection strategies:
 
@@ -14,12 +100,24 @@ Selection and execution modes
   one ID per line and no header.
 
 A selected run defaults to ``sync`` execution; a full run defaults to
-``batch``. Override either decision explicitly with ``--execution sync`` or
+``batch``. Override either decision with ``--execution sync`` or
 ``--execution batch``. Both modes use the same run layout, validation,
 processing, audit, and provenance code.
 
-Project configuration
----------------------
+To intentionally recode successful records, put their source IDs in a text
+file and prepare a separate run:
+
+.. code-block:: console
+
+   $ kllm-batch prepare -c my-project/project.yaml --provider openai \
+       --ids-file rerun_ids.txt
+
+Keeping intentional reruns separate preserves the original results and makes
+the downstream choice explicit. Use ``compare`` when you want to examine the
+differences; reserve ``retry`` for recorded failures.
+
+Configure a project in depth
+----------------------------
 
 Input mappings
 ~~~~~~~~~~~~~~
@@ -81,49 +179,8 @@ preparation until dated price overrides are configured. The
 ``budget.max_estimated_usd`` ceiling blocks runs whose conservative estimate is
 too high.
 
-.. _retries-and-reruns:
-
-Retries and intentional reruns
-------------------------------
-
-Provider or request failures are recorded rather than silently retried. After
-processing a run, prepare a linked child containing only retryable failed rows:
-
-.. code-block:: console
-
-   $ kllm-batch retry RUN_ID
-   $ kllm-batch submit CHILD_RUN_ID
-   $ kllm-batch merge CHILD_RUN_ID
-
-``retry`` prepares but never submits. Review the child run and its new cost
-estimate first. ``merge`` creates a derived result that prefers the newest
-valid attempt; it does not alter parents or raw responses.
-
-To intentionally recode successful records, put their source IDs in a text
-file and prepare a separate run:
-
-.. code-block:: console
-
-   $ kllm-batch prepare -c my-project/project.yaml --provider openai \
-       --ids-file rerun_ids.txt
-
-Keeping the runs separate makes the choice of which result to use explicit.
-
-Compare providers or runs
+Monitor and recover a run
 -------------------------
-
-Process both runs, then compare them by record ID:
-
-.. code-block:: console
-
-   $ kllm-batch compare OPENAI_RUN_ID ANTHROPIC_RUN_ID
-
-The comparison reports agreement for categorical and string fields and exports
-missing records and disagreements for human review. It does not use another
-model to adjudicate results.
-
-Operations and recovery
------------------------
 
 * ``status RUN_ID`` refreshes a batch run's remote status once.
 * ``cancel RUN_ID`` requests cancellation without deleting local artifacts;
@@ -144,8 +201,8 @@ Operations and recovery
 * Remove a run's ``.run.lock`` only after verifying that no other local command
   is operating on that run.
 
-Run artifacts and provenance
-----------------------------
+Understand artifacts and provenance
+-----------------------------------
 
 Immediately after preparation, a run contains ``REVIEW.md``, ``manifest.json``,
 ``state.json``, ``api_requests/``, ``input_snapshot/``, and
@@ -157,8 +214,8 @@ selection, execution, hash, and cost information. Essential row provenance is
 included in result and failure rows. Raw responses, earlier attempts, and
 source inputs are never patched by processing commands.
 
-Research-data boundary
-----------------------
+Protect research data
+---------------------
 
 Only ``record_id`` and ``fields_sent`` enter provider prompts. Preserved
 columns remain local, but inputs, snapshots, requests, and responses can still

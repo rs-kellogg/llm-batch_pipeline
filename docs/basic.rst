@@ -49,8 +49,8 @@ browser:
 The builder edits the same YAML, schema, prompt, input, and context files used
 by the CLI. It can map input columns, draft the response schema and prompts,
 preview a complete request, save explicitly, and run local validation. Use
-``--no-browser`` for a headless launch or ``--port PORT`` to choose another
-local port.
+``--no-browser`` to start the GUI without opening a browser automatically, or
+``--port PORT`` to choose another local port.
 
 2. Validate locally
 -------------------
