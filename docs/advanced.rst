@@ -44,9 +44,17 @@ run and its raw responses remain unchanged.
       $ kllm-batch merge CHILD_RUN_ID
 
 ``retry`` and ``merge`` are local and free; ``retry`` never submits
-automatically. The merged files are written to the child run as
-``outputs/merged.parquet`` and ``outputs/merged.csv``. Missing rows remain
-visible rather than being silently filled.
+automatically. ``merge CHILD_RUN_ID`` walks backward through that child's full
+parent chain, concatenates each run's normalized results from oldest to newest,
+and keeps the newest valid result when the same ``record_id`` appears more than
+once. It then sorts the combined rows by ``record_id``.
+
+The new files are written only inside the supplied child run as
+``CHILD_RUN_ID/outputs/merged.parquet`` and
+``CHILD_RUN_ID/outputs/merged.csv``. The command does not modify or copy files
+into a parent run, and it does not replace any run's existing
+``results.parquet`` or ``results.csv``. Raw responses and source files are also
+left unchanged. Missing rows remain missing rather than being silently filled.
 
 If a child run also has retryable failures, run ``retry`` on that child and
 later run ``merge`` on the newest descendant. The attempt chain preserves the
