@@ -145,5 +145,6 @@ A processed run normally contains:
 * ``run_reports/audit.json``, ``run_summary.json``, and ``usage.json``.
 
 The original data and immutable provider responses remain separate from these
-derived outputs. Continue to :doc:`advanced` for retries, explicit execution
-modes, comparisons, configuration details, and recovery guidance.
+derived outputs. Next, work through the checked-in :doc:`grant_coding` example,
+or continue to :doc:`advanced` for retries, explicit execution modes,
+comparisons, configuration details, and recovery guidance.

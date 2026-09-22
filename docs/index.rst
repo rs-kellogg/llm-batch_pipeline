@@ -13,10 +13,11 @@ the estimated maximum cost before making a provider call.
 Start here
 ----------
 
-New users should follow these two pages in order:
+New users should follow these pages in order:
 
 #. :doc:`installation` — install the command and configure provider credentials.
 #. :doc:`basic` — create a project, run a pilot, and process a complete batch.
+#. :doc:`grant_coding` — practice the workflow with ten synthetic grants.
 
 The :doc:`advanced` guide covers configuration, retries, comparisons, recovery,
 and provenance. Use the :doc:`cli` page as a compact command index.
@@ -44,5 +45,6 @@ What the package protects
 
    installation
    basic
+   grant_coding
    advanced
    cli
