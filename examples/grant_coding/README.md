@@ -32,9 +32,10 @@ only when it is saved. The GUI never submits API requests and opens with
 Streamlit's light base theme and larger, sans-serif interface type. Because
 this checked-in example is already initialized, it can be opened directly. For
 your own work, first run `kllm-batch init my-project`, then
-`kllm-batch gui my-project`. The interface identifies `data/grants.csv` and
-`context/` as the default places for project input and codebook files, and
-Guided/Advanced schema mode changes carry compatible fields in both directions.
+`kllm-batch gui my-project`. The builder shows the configured
+`data/input-data.csv` and identifies `context/` as the default place for a
+codebook. Guided/Advanced schema mode changes carry compatible fields in both
+directions.
 
 ### Starting your own project with `init`
 
@@ -52,7 +53,7 @@ my-project/
 ├── project.yaml
 ├── schema.json
 ├── data/
-│   └── grants.csv
+│   └── input-data.csv
 ├── context/
 │   └── codebook.csv
 ├── prompts/
@@ -90,7 +91,7 @@ Do not put credentials in YAML, prompt files, shell history shared with others, 
 
 ## 3. Inspect the project
 
-- `data/grants.csv` has one grant per row and a stable `grant_id`.
+- `data/input-data.csv` has one grant per row and a stable `grant_id`.
 - `project.yaml` maps `project_title` and `abstract` to model-facing fields while preserving three local metadata columns.
 - `context/codebook.csv` defines the four labels.
 - `prompts/system.txt` contains the coding rules.
@@ -101,7 +102,7 @@ Do not put credentials in YAML, prompt files, shell history shared with others, 
 
 The keys on the left side of `fields_sent` are user-chosen names the model
 sees; there can be any number of them. The values on the right are columns in
-`data/grants.csv`:
+`data/input-data.csv`:
 
 ```yaml
 id_column: grant_id

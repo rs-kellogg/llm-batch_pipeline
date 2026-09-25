@@ -20,6 +20,17 @@ def test_help_lists_workflow_commands():
     assert "pilot" not in result.stdout
 
 
+def test_init_command_uses_input_data_filename(tmp_path):
+    project = tmp_path / "project"
+    result = runner.invoke(app, ["init", str(project)])
+
+    assert result.exit_code == 0
+    assert (project / "data" / "input-data.csv").is_file()
+    assert not (project / "data" / "grants.csv").exists()
+    config = yaml.safe_load((project / "project.yaml").read_text(encoding="utf-8"))
+    assert config["input"]["path"] == "data/input-data.csv"
+
+
 def test_gui_command_launches_local_streamlit(tmp_path, monkeypatch):
     captured = {}
     monkeypatch.setattr("kellogg_llm_batch.cli.importlib.util.find_spec", lambda name: object())
@@ -84,7 +95,7 @@ def test_documentation_does_not_expose_personal_home_paths():
 
 def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, monkeypatch):
     raw = yaml.safe_load(example_config.read_text())
-    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
     raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
     raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
     raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
@@ -134,7 +145,7 @@ def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, mo
 
 def test_submit_warns_only_when_resuming_partial_sync_run(example_config, tmp_path, monkeypatch):
     raw = yaml.safe_load(example_config.read_text())
-    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
     raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
     raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
     raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
@@ -185,7 +196,7 @@ def test_sync_watch_prints_each_poll_status(example_config, tmp_path, monkeypatc
             return {"provider_status": "completed", "state": "completed", "raw": {}}
 
     raw = yaml.safe_load(example_config.read_text())
-    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
     raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
     raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
     raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")

@@ -22,7 +22,7 @@ The important files are:
 .. code-block:: text
 
    my-project/
-   ├── data/grants.csv
+   ├── data/input-data.csv
    ├── context/codebook.csv
    ├── prompts/system.txt
    ├── prompts/user.txt
@@ -30,7 +30,7 @@ The important files are:
    ├── schema.json
    └── runs/
 
-The ten rows in ``data/grants.csv`` contain a stable ``grant_id``, title,
+The ten rows in ``data/input-data.csv`` contain a stable ``grant_id``, title,
 abstract, year, investigator, and source file. ``project.yaml`` sends the
 title and abstract to the model and preserves the other three columns locally.
 ``context/codebook.csv`` defines the ``financial``,

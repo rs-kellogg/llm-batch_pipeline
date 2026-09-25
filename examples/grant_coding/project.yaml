@@ -5,7 +5,7 @@ project:
   description: Classify synthetic grant abstracts using a small codebook.
 
 input:
-  path: data/grants.csv
+  path: data/input-data.csv
   # path: data/invalid_duplicate_content.csv
   # path: data/invalid_duplicate_ids.csv
   format: auto

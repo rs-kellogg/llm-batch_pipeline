@@ -31,7 +31,7 @@ def _configured_draft(example_config: Path, tmp_path: Path):
     draft.config["project"] = {"name": "gui-grant-coding", "description": "GUI test"}
     draft.config["input"].update(
         {
-            "path": str((example / "data" / "grants.csv").resolve()),
+            "path": str((example / "data" / "input-data.csv").resolve()),
             "id_column": "grant_id",
             "fields_sent": {"project_title": "project_title", "abstract": "abstract"},
             "columns_preserved": ["year", "investigator", "source_file"],
@@ -110,7 +110,7 @@ def test_preview_save_validate_and_reopen_preserves_settings(example_config, tmp
     assert saved.validation_report["valid"] is True
     assert saved.validation_report["source_rows"] == 10
     assert (draft.project_dir / "context" / "codebook.csv").is_file()
-    assert len(pd.read_csv(example_config.parent / "data" / "grants.csv")) == 10
+    assert len(pd.read_csv(example_config.parent / "data" / "input-data.csv")) == 10
 
     reopened = load_project_draft(draft.project_dir)
     assert reopened.config["providers"]["openai"]["options"] == {"temperature": 0}
@@ -124,7 +124,7 @@ def test_preview_save_validate_and_reopen_preserves_settings(example_config, tmp
 def test_uploaded_input_is_copied_into_project_data(example_config, tmp_path):
     draft = _configured_draft(example_config, tmp_path)
     uploaded = tmp_path / "selected-grants.csv"
-    uploaded.write_bytes((example_config.parent / "data" / "grants.csv").read_bytes())
+    uploaded.write_bytes((example_config.parent / "data" / "input-data.csv").read_bytes())
     draft.input_upload_source = uploaded
     draft.config["input"]["path"] = str(uploaded)
 
@@ -271,7 +271,7 @@ def test_streamlit_gui_starts_without_api_calls(tmp_path, monkeypatch):
     assert "Save project and validate" in [button.label for button in app.button]
     assert any("Saving overwrites the existing managed" in warning.value for warning in app.warning)
     captions = "\n".join(caption.value for caption in app.caption)
-    assert "data/grants.csv" in captions
+    assert "data/input-data.csv" in captions
     assert "context/" in captions
     markdown_text = "\n".join(str(block.value) for block in app.markdown)
     assert "prompts/system.txt" in markdown_text

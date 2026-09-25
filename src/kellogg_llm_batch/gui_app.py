@@ -250,7 +250,7 @@ def _show_validation(report: dict[str, Any]) -> None:
 def _input_controls(draft: ProjectDraft) -> None:
     st.subheader("1. Input data and column mapping", anchor="input-data")
     st.caption(
-        "The initialized default is `data/grants.csv`. You may replace that file, copy a CSV, Parquet, or JSONL "
+        "The initialized default is `data/input-data.csv`. You may replace that file, copy a CSV, Parquet, or JSONL "
         "file into the project's `data/` folder, or choose a file below. A chosen file is copied into `data/` "
         "when the project is saved."
     )

@@ -44,7 +44,7 @@ def test_duplicate_inputs_block_before_run(example_config, tmp_path, filename, c
 def test_generated_ids_are_deterministic(example_config, tmp_path):
     raw = yaml.safe_load(example_config.read_text())
     _absolute_support_paths(raw, example_config)
-    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
     raw["input"]["id_column"] = None
     config = tmp_path / "project.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
@@ -55,7 +55,7 @@ def test_generated_ids_are_deterministic(example_config, tmp_path):
 
 @pytest.mark.parametrize("fmt", ["parquet", "jsonl"])
 def test_supported_non_csv_formats(example_config, tmp_path, fmt):
-    frame = pd.read_csv(example_config.parent / "data" / "grants.csv")
+    frame = pd.read_csv(example_config.parent / "data" / "input-data.csv")
     source = tmp_path / ("grants.parquet" if fmt == "parquet" else "grants.jsonl")
     if fmt == "parquet":
         frame.to_parquet(source, index=False)
@@ -71,7 +71,7 @@ def test_supported_non_csv_formats(example_config, tmp_path, fmt):
 
 
 def test_missing_configured_id_is_blocking(example_config, tmp_path):
-    frame = pd.read_csv(example_config.parent / "data" / "grants.csv")
+    frame = pd.read_csv(example_config.parent / "data" / "input-data.csv")
     frame.loc[0, "grant_id"] = None
     source = tmp_path / "missing_id.csv"
     frame.to_csv(source, index=False)
@@ -88,7 +88,7 @@ def test_missing_configured_id_is_blocking(example_config, tmp_path):
 def test_schema_requires_nullable_instead_of_optional(example_config, tmp_path):
     raw = yaml.safe_load(example_config.read_text())
     _absolute_support_paths(raw, example_config)
-    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
     schema = tmp_path / "schema.json"
     schema.write_text('{"type":"object","properties":{"label":{"type":"string"}},"required":[],"additionalProperties":false}', encoding="utf-8")
     raw["task"]["output_schema"] = str(schema)
@@ -101,7 +101,7 @@ def test_schema_requires_nullable_instead_of_optional(example_config, tmp_path):
 def test_report_is_written_for_structural_validation_error(example_config, tmp_path):
     raw = yaml.safe_load(example_config.read_text())
     _absolute_support_paths(raw, example_config)
-    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
     logical_name = next(iter(raw["input"]["fields_sent"]))
     raw["input"]["fields_sent"][logical_name] = "column_that_does_not_exist"
     config = tmp_path / "project.yaml"
@@ -117,7 +117,7 @@ def test_report_is_written_for_structural_validation_error(example_config, tmp_p
 def test_fields_sent_accepts_arbitrary_names_and_multiple_mappings(example_config, tmp_path):
     raw = yaml.safe_load(example_config.read_text())
     _absolute_support_paths(raw, example_config)
-    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
     raw["input"]["fields_sent"] = {
         "research_heading": "project_title",
         "document_body": "abstract",
@@ -143,7 +143,7 @@ def test_fields_sent_accepts_arbitrary_names_and_multiple_mappings(example_confi
 def test_evaluation_gold_mapping_is_validated(example_config, tmp_path, gold_columns, code):
     raw = yaml.safe_load(example_config.read_text())
     _absolute_support_paths(raw, example_config)
-    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
     raw["evaluation"]["gold_columns"] = gold_columns
     config = tmp_path / "invalid-gold.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")

@@ -12,7 +12,7 @@ project:
   description: Classify synthetic grant abstracts using a small codebook.
 
 input:
-  path: data/grants.csv
+  path: data/input-data.csv
   format: auto
   id_column: grant_id
   csv_encoding: utf-8
@@ -137,7 +137,7 @@ def scaffold_project(directory: str | Path) -> Path:
     (root / "schema.json").write_text(SCHEMA, encoding="utf-8")
     (root / "prompts" / "system.txt").write_text(SYSTEM_PROMPT, encoding="utf-8")
     (root / "prompts" / "user.txt").write_text(USER_PROMPT, encoding="utf-8")
-    (root / "data" / "grants.csv").write_text(INPUT_CSV, encoding="utf-8")
+    (root / "data" / "input-data.csv").write_text(INPUT_CSV, encoding="utf-8")
     (root / "context" / "codebook.csv").write_text(CODEBOOK_CSV, encoding="utf-8")
     (root / ".gitignore").write_text("runs/\n.env\n", encoding="utf-8")
     return root

@@ -23,17 +23,22 @@ def test_scaffold_matches_checked_in_grant_example(tmp_path):
     root = scaffold_project(tmp_path / "project")
     example = Path(__file__).resolve().parents[1] / "examples" / "grant_coding"
 
+    assert (root / "data" / "input-data.csv").read_bytes() == (
+        example / "data" / "input-data.csv"
+    ).read_bytes()
+    assert not (root / "data" / "grants.csv").exists()
     for relative in (
-        "data/grants.csv",
         "context/codebook.csv",
         "schema.json",
         "prompts/system.txt",
         "prompts/user.txt",
     ):
         assert (root / relative).read_bytes() == (example / relative).read_bytes()
-    assert yaml.safe_load((root / "project.yaml").read_text(encoding="utf-8")) == yaml.safe_load(
-        (example / "project.yaml").read_text(encoding="utf-8")
-    )
+    generated_config = yaml.safe_load((root / "project.yaml").read_text(encoding="utf-8"))
+    example_config = yaml.safe_load((example / "project.yaml").read_text(encoding="utf-8"))
+    assert generated_config["input"]["path"] == "data/input-data.csv"
+    assert (root / generated_config["input"]["path"]).is_file()
+    assert generated_config == example_config
     assert (root / "runs").is_dir()
     assert not list((root / "runs").iterdir())
     assert (root / ".gitignore").read_text(encoding="utf-8") == "runs/\n.env\n"
@@ -45,7 +50,7 @@ def test_scaffold_codebook_schema_and_preview_agree(tmp_path):
     root = scaffold_project(tmp_path / "project")
     config = yaml.safe_load((root / "project.yaml").read_text(encoding="utf-8"))
     schema = json.loads((root / "schema.json").read_text(encoding="utf-8"))
-    input_rows = pd.read_csv(root / "data" / "grants.csv")
+    input_rows = pd.read_csv(root / "data" / "input-data.csv")
     codebook = pd.read_csv(root / "context" / "codebook.csv")
 
     assert len(input_rows) == 10

@@ -27,11 +27,11 @@ The project combines five pieces:
 
 .. code-block:: text
 
-   data/grants.csv ──┐
+   data/input-data.csv ──┐
                      ├── prompts ──> provider request ──> validated results
    context/codebook.csv ────────────┘                └── schema.json
 
-* ``data/grants.csv`` contains ten grants identified by ``grant_id``.
+* ``data/input-data.csv`` contains ten grants identified by ``grant_id``.
 * ``project.yaml`` sends each grant's title and abstract to the model while
   preserving year, investigator, and source-file metadata locally.
 * ``context/codebook.csv`` defines the ``financial``, ``organizational``,

@@ -17,7 +17,7 @@ from conftest import FakeAdapter
 
 def _temporary_config(example_config, tmp_path):
     raw = yaml.safe_load(example_config.read_text())
-    raw["input"]["path"] = str(example_config.parent / "data" / "grants.csv")
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
     raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
     raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
     raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
@@ -383,7 +383,7 @@ def test_retry_blocks_if_source_changed(example_config, tmp_path, monkeypatch):
     fake = IncompleteAdapter()
     monkeypatch.setattr(core, "get_provider", lambda name: fake)
     source = tmp_path / "grants.csv"
-    shutil.copy2(example_config.parent / "data" / "grants.csv", source)
+    shutil.copy2(example_config.parent / "data" / "input-data.csv", source)
     config = _temporary_config(example_config, tmp_path)
     raw = yaml.safe_load(config.read_text())
     raw["input"]["path"] = str(source)

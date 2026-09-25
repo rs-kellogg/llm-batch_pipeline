@@ -154,7 +154,7 @@ placed in prompts. For example:
 .. code-block:: yaml
 
    input:
-     path: data/grants.csv
+     path: data/input-data.csv
      id_column: grant_id
      fields_sent:
        project_title: project_title
