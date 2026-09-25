@@ -25,14 +25,16 @@ Install the current version directly from the public repository:
    $ python -m pip install "kellogg-llm-batch @ git+https://github.com/rs-kellogg/llm-batch_pipeline.git"
    $ kllm-batch --help
 
-The optional local project builder requires the ``gui`` extra:
+The standard installation includes the local project builder. After creating
+a project, you can open it in your browser:
 
 .. code-block:: console
 
-   $ python -m pip install "kellogg-llm-batch[gui] @ git+https://github.com/rs-kellogg/llm-batch_pipeline.git"
+   $ kllm-batch init my-project
+   $ kllm-batch gui my-project
 
-The GUI binds only to ``127.0.0.1`` and does not call a provider. Preparation
-and provider operations remain CLI-only.
+Using the GUI is optional. It binds only to ``127.0.0.1`` and does not call a
+provider. Preparation and provider operations remain CLI-only.
 
 Contributor installation
 ------------------------

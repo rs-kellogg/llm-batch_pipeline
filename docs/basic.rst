@@ -49,8 +49,8 @@ allowed labels aligned with the codebook.
 Optional: use the project builder
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If the ``gui`` extra is installed, open the initialized project in a local
-browser:
+The standard installation includes the project builder. To edit the
+initialized project in a local browser, run:
 
 .. code-block:: console
 

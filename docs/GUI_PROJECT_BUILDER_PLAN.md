@@ -38,7 +38,8 @@ local validation.
 
 ## Architecture and interfaces
 
-- Add Streamlit under an optional `gui` dependency group.
+- Include Streamlit in the standard installation; retain the `gui` extra as a
+  compatibility alias.
 - Bind the application to `127.0.0.1`, use a clean light theme with an
   18-pixel base font and Kellogg purple accents, and disable usage telemetry.
 - Give a clear installation command when GUI dependencies are absent.
@@ -64,8 +65,7 @@ local validation.
 
 ## Assumptions
 
-- Streamlit is optional and installed with
-  `python -m pip install -e '.[gui]'`.
+- Streamlit is included in the standard installation.
 - Browser-selected input data and codebooks are copied into the project only on
   explicit save.
 - The GUI runs only on the researcher's computer.

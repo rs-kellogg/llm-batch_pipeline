@@ -31,6 +31,9 @@ kllm-batch prepare -c my-project/project.yaml --provider openai \
   --sample-size 4 --seed 42
 ```
 
+The standard installation also includes the local project builder. Run
+`kllm-batch gui my-project` to edit the initialized project in your browser.
+
 Review the generated `RUN_ID/REVIEW.md` and exact request payloads before
 allowing a provider call:
 

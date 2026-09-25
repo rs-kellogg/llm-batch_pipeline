@@ -57,15 +57,18 @@ def gui_command(
     port: int = typer.Option(8501, min=1, max=65535, help="Local browser port."),
     no_browser: bool = typer.Option(False, "--no-browser", help="Start the local server without opening a browser window."),
 ):
-    """Open the optional local project builder; this makes no provider calls.
+    """Open the local project builder; this makes no provider calls.
 
     First run `kllm-batch init my-project`, then `kllm-batch gui my-project`.
-    Install the optional `gui` package extra first. The server binds only to
-    127.0.0.1.
+    The server binds only to 127.0.0.1.
     """
     if importlib.util.find_spec("streamlit") is None:
-        console.print("[bold red]GUI dependencies are not installed.[/bold red]")
-        console.print("Install them with: python -m pip install -e '.[gui]'", markup=False)
+        console.print("[bold red]Streamlit is missing from this environment.[/bold red]")
+        console.print(
+            'Reinstall the standard package with: python -m pip install '
+            '"kellogg-llm-batch @ git+https://github.com/rs-kellogg/llm-batch_pipeline.git"',
+            markup=False,
+        )
         raise typer.Exit(1)
     project_directory = project_directory.expanduser().resolve()
     project_file = project_directory if project_directory.name == "project.yaml" else project_directory / "project.yaml"

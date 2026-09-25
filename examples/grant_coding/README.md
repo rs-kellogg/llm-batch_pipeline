@@ -13,10 +13,10 @@ mamba activate kllm-batch
 python -m pip install -e .
 ```
 
-For the optional local project-builder GUI, install:
+The standard installation includes the local project builder. To open this
+example in a browser, run:
 
 ```bash
-python -m pip install -e '.[gui]'
 kllm-batch gui examples/grant_coding
 ```
 
@@ -54,16 +54,18 @@ my-project/
 ├── data/
 │   └── input.csv
 ├── context/
+│   └── codebook.csv
 ├── prompts/
 │   ├── system.txt
 │   └── user.txt
 └── runs/
 ```
 
-It will not overwrite a directory that already contains files. Replace the
-sample row in `data/input.csv`, configure the column mappings and providers in
-`project.yaml`, revise both prompts and `schema.json`, and then validate the
-new project:
+It will not overwrite a directory that already contains files. The starter
+contains eight synthetic grants and a four-topic codebook. Replace the sample
+data and codebook for your task, configure the column mappings and providers
+in `project.yaml`, revise both prompts and `schema.json`, and then validate
+the new project:
 
 ```bash
 kllm-batch validate -c my-project/project.yaml

@@ -47,12 +47,16 @@ def test_gui_command_launches_local_streamlit(tmp_path, monkeypatch):
     assert captured["command"][captured["command"].index("--theme.baseRadius") + 1] == "medium"
 
 
-def test_gui_command_explains_missing_optional_dependency(tmp_path, monkeypatch):
+def test_gui_command_explains_missing_dependency(tmp_path, monkeypatch):
     monkeypatch.setattr("kellogg_llm_batch.cli.importlib.util.find_spec", lambda name: None)
     result = runner.invoke(app, ["gui", str(tmp_path / "project")])
     assert result.exit_code == 1
-    assert "GUI dependencies are not installed" in result.stdout
-    assert "python -m pip install -e '.[gui]'" in result.stdout
+    assert "Streamlit is missing from this environment" in result.stdout
+    assert "python -m pip install" in result.stdout
+    assert (
+        "kellogg-llm-batch @ git+https://github.com/rs-kellogg/llm-batch_pipeline.git"
+        in " ".join(result.stdout.split())
+    )
 
 
 def test_gui_command_requires_initialized_project(tmp_path, monkeypatch):
