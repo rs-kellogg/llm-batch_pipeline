@@ -45,8 +45,9 @@ to the response schema.
 You can validate and prepare a pilot with these synthetic files. For your own
 research, replace the input rows and codebook, then update ``project.yaml``,
 both prompts, and ``schema.json`` together. In particular, keep both schema
-label fields aligned with the codebook. The :doc:`grant_coding` walkthrough
-uses these same project files and carries the workflow through to results.
+label fields aligned with the codebook. See :doc:`project_settings` for a
+short guide to the YAML file. The :doc:`grant_coding` walkthrough uses these
+same project files and carries the workflow through to results.
 
 .. _optional-gui:
 
