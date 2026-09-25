@@ -69,11 +69,25 @@ SCHEMA = """{
   "properties": {
     "primary_label": {
       "type": "string",
-      "enum": ["financial", "organizational", "technical", "other"]
+      "enum": [
+        "financial",
+        "organizational",
+        "technical",
+        "other"
+      ]
     },
     "secondary_label": {
-      "type": ["string", "null"],
-      "enum": ["financial", "organizational", "technical", "other", null]
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "financial",
+        "organizational",
+        "technical",
+        "other",
+        null
+      ]
     },
     "confidence": {
       "type": "number",
@@ -84,10 +98,14 @@ SCHEMA = """{
       "type": "string"
     }
   },
-  "required": ["primary_label", "secondary_label", "confidence", "justification"],
+  "required": [
+    "primary_label",
+    "secondary_label",
+    "confidence",
+    "justification"
+  ],
   "additionalProperties": false
 }
-
 """
 
 CODEBOOK_CSV = """label,definition

@@ -34,6 +34,8 @@ def test_scaffold_matches_checked_in_grant_example(tmp_path):
         "prompts/user.txt",
     ):
         assert (root / relative).read_bytes() == (example / relative).read_bytes()
+    schema_text = (root / "schema.json").read_text(encoding="utf-8")
+    assert schema_text == json.dumps(json.loads(schema_text), indent=2, ensure_ascii=False) + "\n"
     generated_config = yaml.safe_load((root / "project.yaml").read_text(encoding="utf-8"))
     example_config = yaml.safe_load((example / "project.yaml").read_text(encoding="utf-8"))
     assert generated_config["input"]["path"] == "data/input-data.csv"
@@ -58,6 +60,7 @@ def test_scaffold_codebook_schema_and_preview_agree(tmp_path):
     assert input_rows[["project_title", "abstract"]].notna().all().all()
     assert set(codebook.columns) == {"label", "definition"}
     assert codebook["label"].tolist() == schema["properties"]["primary_label"]["enum"]
+    assert schema["properties"]["secondary_label"]["type"] == ["string", "null"]
     assert schema["properties"]["secondary_label"]["enum"] == codebook["label"].tolist() + [None]
     assert codebook["label"].tolist() == [
         "financial", "organizational", "technical", "other"

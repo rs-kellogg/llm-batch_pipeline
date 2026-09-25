@@ -92,6 +92,7 @@ def test_guided_schema_round_trip_and_nullable_enum():
 
 def test_preview_save_validate_and_reopen_preserves_settings(example_config, tmp_path):
     draft = _configured_draft(example_config, tmp_path)
+    original_schema = json.loads((example_config.parent / "schema.json").read_text(encoding="utf-8"))
     draft.config["providers"]["openai"]["options"] = {"temperature": 0}
     preview = render_project_preview(draft, source_row=4, row_count=3)
 
@@ -113,6 +114,9 @@ def test_preview_save_validate_and_reopen_preserves_settings(example_config, tmp
     assert '\n  version: "1.0"\n' in yaml_preview
     saved = save_project_draft(draft)
     assert saved.project_file.read_text(encoding="utf-8") == yaml_preview
+    saved_schema_text = (draft.project_dir / "schema.json").read_text(encoding="utf-8")
+    assert saved_schema_text == json.dumps(original_schema, indent=2, ensure_ascii=False) + "\n"
+    assert json.loads(saved_schema_text)["properties"]["secondary_label"]["type"] == ["string", "null"]
     assert saved.validation_report["valid"] is True
     assert saved.validation_report["source_rows"] == 10
     assert (draft.project_dir / "context" / "codebook.csv").is_file()
