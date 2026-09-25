@@ -50,6 +50,45 @@ PROJECT_CONFIG_ORDER = (
 )
 
 
+class _ProjectYAMLDumper(yaml.SafeDumper):
+    """Use the indented-list style of projects created by ``init``."""
+
+    def increase_indent(self, flow: bool = False, indentless: bool = False) -> None:
+        return super().increase_indent(flow=flow, indentless=False)
+
+
+class _DoubleQuotedString(str):
+    """Mark a string that should keep explicit double quotes in YAML."""
+
+
+def _represent_double_quoted_string(dumper: yaml.Dumper, value: _DoubleQuotedString) -> yaml.ScalarNode:
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(value), style='"')
+
+
+_ProjectYAMLDumper.add_representer(_DoubleQuotedString, _represent_double_quoted_string)
+
+
+def _format_project_yaml(config: dict[str, Any]) -> str:
+    """Render one stable, readable style for the GUI preview and saved file."""
+    formatted_config = copy.deepcopy(config)
+    prompt = formatted_config.get("prompt")
+    if isinstance(prompt, dict) and isinstance(prompt.get("version"), str):
+        prompt["version"] = _DoubleQuotedString(prompt["version"])
+    rendered = yaml.dump(
+        formatted_config,
+        Dumper=_ProjectYAMLDumper,
+        sort_keys=False,
+        allow_unicode=True,
+    )
+    lines = rendered.splitlines()
+    spaced_lines: list[str] = []
+    for line in lines:
+        if spaced_lines and line and not line[0].isspace():
+            spaced_lines.append("")
+        spaced_lines.append(line)
+    return "\n".join(spaced_lines) + "\n"
+
+
 class ProjectDraftConflict(RuntimeError):
     """Raised when a managed project file changed after it was loaded."""
 
@@ -408,7 +447,7 @@ def _build_save_config(draft: ProjectDraft) -> tuple[dict[str, Any], Path | None
 def render_project_yaml(draft: ProjectDraft) -> str:
     """Render the exact project.yaml content that Save would currently write."""
     config, _, _ = _build_save_config(draft)
-    return yaml.safe_dump(config, sort_keys=False, allow_unicode=True)
+    return _format_project_yaml(config)
 
 
 def validate_output_schema(schema: dict[str, Any]) -> None:
@@ -441,7 +480,7 @@ def save_project_draft(draft: ProjectDraft) -> SaveResult:
     staging = Path(tempfile.mkdtemp(prefix=".kllm-gui-", dir=root))
     try:
         files: dict[Path, bytes] = {
-            Path("project.yaml"): yaml.safe_dump(config, sort_keys=False, allow_unicode=True).encode("utf-8"),
+            Path("project.yaml"): _format_project_yaml(config).encode("utf-8"),
             Path("schema.json"): (json.dumps(draft.schema, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
             Path("prompts/system.txt"): draft.system_prompt.encode("utf-8"),
             Path("prompts/user.txt"): draft.user_prompt.encode("utf-8"),

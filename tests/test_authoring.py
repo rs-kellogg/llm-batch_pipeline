@@ -105,6 +105,12 @@ def test_preview_save_validate_and_reopen_preserves_settings(example_config, tmp
     assert "GRANT-001" not in preview.user_prompt
 
     yaml_preview = render_project_yaml(draft)
+    assert yaml_preview.startswith("version: 1\n\nproject:\n")
+    assert "\n\ninput:\n" in yaml_preview
+    assert "\n\noutput:\n" in yaml_preview
+    assert "\n  columns_preserved:\n    - year\n    - investigator\n    - source_file\n" in yaml_preview
+    assert "\n  required_fields:\n    - abstract\n" in yaml_preview
+    assert '\n  version: "1.0"\n' in yaml_preview
     saved = save_project_draft(draft)
     assert saved.project_file.read_text(encoding="utf-8") == yaml_preview
     assert saved.validation_report["valid"] is True
@@ -119,6 +125,9 @@ def test_preview_save_validate_and_reopen_preserves_settings(example_config, tmp
         "abstract": "abstract",
     }
     assert reopened.codebook_source == draft.project_dir / "context" / "codebook.csv"
+    assert yaml.safe_load(yaml_preview) == reopened.config
+    assert render_project_yaml(reopened) == yaml_preview
+    assert save_project_draft(reopened).project_file.read_text(encoding="utf-8") == yaml_preview
 
 
 def test_uploaded_input_is_copied_into_project_data(example_config, tmp_path):
