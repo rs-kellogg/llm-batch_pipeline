@@ -9,9 +9,9 @@ a small synchronous pilot, and only then prepare a complete batch.
 1. Create a project
 -------------------
 
-``init`` creates an annotated project with starter data, prompts, a JSON
-schema, configuration, and an empty runs directory. The destination must be
-empty.
+``init`` creates a working mini grant-coding project with eight synthetic
+grants, a four-topic codebook, prompts, a JSON schema, configuration, and an
+empty runs directory. The destination must be empty.
 
 .. code-block:: console
 
@@ -23,16 +23,26 @@ The important files are:
 
    my-project/
    ├── data/input.csv
+   ├── context/codebook.csv
    ├── prompts/system.txt
    ├── prompts/user.txt
    ├── project.yaml
    ├── schema.json
    └── runs/
 
-Replace the starter row in ``data/input.csv`` and edit ``project.yaml`` so its
-ID, model-facing fields, and locally preserved columns match your data. Update
-the two prompt files and ``schema.json`` to describe the task and one expected
-result row. The package adds ``record_id`` and the outer ``results`` array.
+The eight rows in ``data/input.csv`` contain a grant ID, title, abstract, and
+year. ``project.yaml`` sends the title and abstract to the model and preserves
+the year locally. ``context/codebook.csv`` defines the ``financial``,
+``organizational``, ``technical``, and ``other`` labels. The user prompt inserts
+this CSV as ``${codebook_json}`` alongside the selected records in
+``${records_json}``. The ``label`` enum in ``schema.json`` allows the same four
+values. The package adds ``record_id`` and the outer ``results`` array to the
+response schema.
+
+You can validate and prepare a pilot with these synthetic files. For your own
+research, replace the input rows and codebook, then update ``project.yaml``,
+both prompts, and ``schema.json`` together. In particular, keep the schema's
+allowed labels aligned with the codebook.
 
 .. _optional-gui:
 
@@ -72,7 +82,7 @@ Select a deterministic sample and prepare it for synchronous execution:
 .. code-block:: console
 
    $ kllm-batch prepare -c my-project/project.yaml --provider openai \
-       --sample-size 20 --seed 42
+       --sample-size 4 --seed 42
 
 ``prepare`` is local and free. It prints a run directory; use that complete
 path as ``RUN_ID`` below. Start with ``RUN_ID/REVIEW.md``, then inspect:

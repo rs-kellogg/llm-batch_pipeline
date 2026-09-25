@@ -28,7 +28,7 @@ Create and validate a project, then prepare a small deterministic pilot:
 kllm-batch init my-project
 kllm-batch validate -c my-project/project.yaml
 kllm-batch prepare -c my-project/project.yaml --provider openai \
-  --sample-size 20 --seed 42
+  --sample-size 4 --seed 42
 ```
 
 Review the generated `RUN_ID/REVIEW.md` and exact request payloads before

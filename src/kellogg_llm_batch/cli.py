@@ -38,7 +38,7 @@ def _fail(exc: Exception) -> None:
 
 @app.command("init")
 def init_command(directory: Path = typer.Argument(..., help="Empty directory to scaffold.")):
-    """Create an annotated project, prompts, schema, and sample data.
+    """Create a synthetic grant-coding project with data, codebook, prompts, and schema.
 
     Example: `kllm-batch init my-project`. This is local, uses no credentials,
     and makes no API calls. The destination must not already contain files.

@@ -336,9 +336,9 @@ def _input_controls(draft: ProjectDraft) -> None:
 def _codebook_controls(draft: ProjectDraft) -> None:
     st.subheader("2. Codebook", anchor="codebook")
     st.caption(
-        "A codebook is optional; `kllm-batch init` leaves `context/` ready for it. Copy a CSV, JSON, YAML, TXT, "
-        "or Markdown codebook into that folder, or choose one below. A chosen file is copied into `context/` "
-        "when the project is saved."
+        "`kllm-batch init` includes a sample `context/codebook.csv`. You can edit it or choose a replacement "
+        "CSV, JSON, YAML, TXT, or Markdown codebook below. A chosen file is copied into `context/` "
+        "when the project is saved. Keep output-schema labels aligned with the codebook."
     )
     current_path = str(draft.codebook_source or "")
     if current_path:

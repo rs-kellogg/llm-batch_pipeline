@@ -116,15 +116,19 @@ def new_project_draft(project_dir: str | Path) -> ProjectDraft:
         raise FileExistsError(f"A project already exists at {root}; open it instead of creating a new draft")
     config = yaml.safe_load(PROJECT_YAML)
     config["project"]["name"] = root.name or "my-coding-project"
+    config["project"]["description"] = "Describe the research task."
     config["input"]["path"] = ""
     config["input"]["id_column"] = None
     config["input"]["fields_sent"] = {}
+    config["input"]["columns_preserved"] = []
     config["input"]["required_fields"] = []
     config["prompt"]["context"] = {}
+    schema = json.loads(SCHEMA)
+    schema["properties"]["label"].pop("enum", None)
     return ProjectDraft(
         project_dir=root,
         config=config,
-        schema=json.loads(SCHEMA),
+        schema=schema,
         system_prompt=DEFAULT_SYSTEM_PROMPT,
         user_prompt=DEFAULT_USER_PROMPT,
         original_hashes=_snapshot_hashes(root, config),
