@@ -31,7 +31,8 @@ The project combines five pieces:
                      ├── prompts ──> provider request ──> validated results
    context/codebook.csv ────────────┘                └── schema.json
 
-* ``data/input-data.csv`` contains ten grants identified by ``grant_id``.
+* ``data/input-data.csv`` contains ten grants identified by ``grant_id`` and
+  illustrative reference labels for local evaluation.
 * ``project.yaml`` sends each grant's title and abstract to the model while
   preserving year, investigator, and source-file metadata locally.
 * ``context/codebook.csv`` defines the ``financial``, ``organizational``,
@@ -58,6 +59,21 @@ The relevant input mapping in ``project.yaml`` is:
 Only ``record_id``, ``project_title``, and ``abstract`` enter the model prompt.
 The three preserved columns are joined back into results locally. With
 ``rows_per_request: 3``, the complete ten-row example produces four requests.
+
+The source column ``reference_primary_label`` is deliberately neither sent
+nor preserved in results. This configuration compares predictions with those
+labels locally:
+
+.. code-block:: yaml
+
+   evaluation:
+     random_seed: 42
+     gold_columns:
+       primary_label: reference_primary_label
+
+The ten reference labels are teaching examples based on the codebook, not an
+externally validated benchmark. Replace them with your own reviewed labels
+before using agreement as research evidence.
 
 1. Validate the project
 -----------------------
@@ -150,14 +166,23 @@ After a successful pilot, inspect:
      - The same results in a type-stable format for analysis.
    * - ``RUN_ID/run_reports/audit.json``
      - Expected, valid, missing, unexpected, and duplicate record counts.
+   * - ``RUN_ID/run_reports/run_summary.json``
+     - ``evaluation_metrics.primary_label`` gives exact-match accuracy against
+       the selected reference labels.
+   * - ``RUN_ID/input_snapshot/gold_labels.parquet``
+     - Local reference labels selected for this run; its relative path is
+       recorded as ``gold_labels_file`` in ``manifest.json``.
    * - ``RUN_ID/run_reports/usage.json``
      - Request-level and total token usage.
    * - ``RUN_ID/outputs/failures.jsonl``
      - Created only if a request or result failed validation.
 
 Check that each selected grant has one valid result, the label and
-justification are sensible, and the preserved metadata is present. If failures
-occur, follow :ref:`retries-and-reruns` rather than editing raw responses.
+justification are sensible, and the preserved metadata is present. The
+accuracy metric counts only valid results with matching reference IDs; inspect
+the audit report for missing or invalid results before interpreting it. If
+failures occur, follow :ref:`retries-and-reruns` rather than editing raw
+responses.
 
 6. Continue to the complete batch
 ---------------------------------

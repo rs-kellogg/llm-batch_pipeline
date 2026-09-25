@@ -187,6 +187,10 @@ branches and moves unsupported numeric or length bounds into provider schema
 descriptions. The original project schema remains unchanged and is enforced
 during local response validation.
 
+For structured extraction, use nullable fields when a fact may be absent and
+instruct the model to return ``null`` rather than infer unsupported details.
+PDF parsing and OCR remain upstream steps.
+
 Limits, models, and cost
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -279,10 +283,3 @@ package.
 PDF/document ingestion, OCR, de-identification, source-table combination,
 fuzzy duplicate detection, and automatic adjudication are upstream or out of
 scope for the current release.
-
-Further references
-------------------
-
-* `Migration from the original batch scripts <https://github.com/rs-kellogg/llm-batch_pipeline/blob/main/docs/MIGRATION.md>`_
-* `Additional task recipes <https://github.com/rs-kellogg/llm-batch_pipeline/blob/main/docs/RECIPES.md>`_
-* `Complete grant-coding example <https://github.com/rs-kellogg/llm-batch_pipeline/tree/main/examples/grant_coding>`_

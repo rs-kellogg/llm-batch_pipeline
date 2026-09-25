@@ -172,6 +172,7 @@ def new_project_draft(project_dir: str | Path) -> ProjectDraft:
     config["input"]["columns_preserved"] = []
     config["input"]["required_fields"] = []
     config["input"].pop("field_limits", None)
+    config["evaluation"]["gold_columns"] = {}
     config["prompt"]["context"] = {}
     schema = copy.deepcopy(GENERIC_SCHEMA)
     return ProjectDraft(

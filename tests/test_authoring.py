@@ -69,6 +69,22 @@ def test_new_gui_draft_keeps_generic_schema(tmp_path):
     draft = new_project_draft(tmp_path / "gui-project")
     assert list(draft.schema["properties"]) == ["label", "confidence", "justification"]
     assert "enum" not in draft.schema["properties"]["label"]
+    assert draft.config["evaluation"]["gold_columns"] == {}
+
+
+def test_gui_save_keeps_initialized_gold_mapping(tmp_path):
+    project = scaffold_project(tmp_path / "project")
+    draft = load_project_draft(project)
+    assert draft.config["evaluation"]["gold_columns"] == {
+        "primary_label": "reference_primary_label"
+    }
+
+    result = save_project_draft(draft)
+    assert result.validation_report["valid"] is True
+    saved = yaml.safe_load(result.project_file.read_text(encoding="utf-8"))
+    assert saved["evaluation"]["gold_columns"] == {
+        "primary_label": "reference_primary_label"
+    }
 
 
 def test_guided_schema_round_trip_and_nullable_enum():

@@ -125,6 +125,8 @@ Evaluation and output
 
    evaluation:
      random_seed: 42
+     gold_columns:
+       primary_label: reference_primary_label
 
    output:
      write_parquet: true
@@ -132,9 +134,21 @@ Evaluation and output
      runs_directory: runs
 
 ``random_seed`` is used for deterministic sampling when ``prepare
---sample-size`` is given without ``--seed``. The starter writes both Parquet
-and CSV results under ``runs/``. Each prepared run gets its own directory
-there; the original input data remains separate.
+--sample-size`` is given without ``--seed``. ``gold_columns`` maps the predicted
+schema field ``primary_label`` to the local source column
+``reference_primary_label``. That column is not in ``fields_sent`` or
+``columns_preserved``, so it does not enter provider prompts or the normalized
+results. Preparation saves the selected reference labels as
+``RUN_ID/input_snapshot/gold_labels.parquet`` and records that relative path
+in the manifest's ``gold_labels_file`` field. After responses are processed,
+``RUN_ID/run_reports/run_summary.json`` reports exact-match accuracy under
+``evaluation_metrics.primary_label``.
+
+The starter labels are illustrative, not externally validated research ground
+truth. When replacing the input, provide your own reviewed reference column or
+remove ``gold_columns``; validation rejects a mapping to a missing column.
+The starter writes both Parquet and CSV results under ``runs/``. Each prepared
+run gets its own directory there; the original input data remains separate.
 
 Once these settings look right, return to the :doc:`basic` workflow to
 validate, prepare, and inspect a pilot. For retries, comparisons, and recovery,

@@ -39,6 +39,8 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     assert manifest["purpose"] == "production"
     assert manifest["execution"] == "batch"
     assert manifest["cost_estimate"]["execution"] == "batch"
+    assert manifest["gold_columns"] == {"primary_label": "reference_primary_label"}
+    assert manifest["gold_labels_file"] == "input_snapshot/gold_labels.parquet"
     assert {path.name for path in run.iterdir()} == {
         "REVIEW.md",
         "input_snapshot",
@@ -49,8 +51,10 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     }
     assert {path.name for path in (run / "input_snapshot").iterdir()} == {
         "canonical_input.parquet",
+        "gold_labels.parquet",
         "request_map.jsonl",
     }
+    assert len(pd.read_parquet(run / manifest["gold_labels_file"])) == 10
     assert not (run / "api_requests" / "canonical_input.csv").exists()
     assert not (run / "api_requests" / "model_records.jsonl").exists()
     assert not (run / "api_requests" / "rendered_prompts.jsonl").exists()
@@ -67,6 +71,7 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     results = pd.read_parquet(run / "outputs" / "results.parquet")
     assert len(results) == 10
     assert results["record_id"].is_unique
+    assert "reference_primary_label" not in results.columns
     assert (run / "outputs" / "results.csv").exists()
     assert not (run / "outputs" / "failures.jsonl").exists()
     assert not (run / "outputs" / "failures.parquet").exists()
@@ -96,6 +101,11 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     }
     assert not (run / "run_reports" / "audit.md").exists()
     assert not (run / "run_reports" / "run_summary.md").exists()
+    summary = json.loads((run / "run_reports" / "run_summary.json").read_text(encoding="utf-8"))
+    assert summary["evaluation_metrics"]["primary_label"] == {
+        "n": 10,
+        "accuracy": pytest.approx(0.1),
+    }
     assert load_state(run)["stage"] == "audited"
 
 

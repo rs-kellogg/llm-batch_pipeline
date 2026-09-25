@@ -58,9 +58,3 @@ python -m pip install -e '.[dev,docs]'
 python -m pytest
 sphinx-build -W --keep-going -b html docs docs/_build/html
 ```
-
-Additional references:
-
-- [Migration from the original scripts](docs/MIGRATION.md)
-- [Additional task recipes](docs/RECIPES.md)
-- [Optional local project-builder GUI](https://rs-kellogg.github.io/llm-batch_pipeline/basic.html#optional-use-the-project-builder)

@@ -51,6 +51,8 @@ budget:
 
 evaluation:
   random_seed: 42
+  gold_columns:
+    primary_label: reference_primary_label
 
 output:
   write_parquet: true

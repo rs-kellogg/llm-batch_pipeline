@@ -31,8 +31,10 @@ The important files are:
    └── runs/
 
 The ten rows in ``data/input-data.csv`` contain a stable ``grant_id``, title,
-abstract, year, investigator, and source file. ``project.yaml`` sends the
-title and abstract to the model and preserves the other three columns locally.
+abstract, year, investigator, source file, and illustrative reference label.
+``project.yaml`` sends the title and abstract to the model, preserves year,
+investigator, and source file locally, and uses the reference label only for
+local evaluation.
 ``context/codebook.csv`` defines the ``financial``,
 ``organizational``, ``technical``, and ``other`` labels. The user prompt inserts
 this CSV as ``${codebook_json}`` alongside the selected records in
@@ -44,10 +46,12 @@ to the response schema.
 
 You can validate and prepare a pilot with these synthetic files. For your own
 research, replace the input rows and codebook, then update ``project.yaml``,
-both prompts, and ``schema.json`` together. In particular, keep both schema
-label fields aligned with the codebook. See :doc:`project_settings` for a
-short guide to the YAML file. The :doc:`grant_coding` walkthrough uses these
-same project files and carries the workflow through to results.
+both prompts, and ``schema.json`` together. Replace the illustrative reference
+labels with your own reviewed labels or remove the gold-column mapping. In
+particular, keep both schema label fields aligned with the codebook. See
+:doc:`project_settings` for a short guide to the YAML file. The
+:doc:`grant_coding` walkthrough uses these same project files and carries the
+workflow through to results.
 
 .. _optional-gui:
 

@@ -63,9 +63,10 @@ my-project/
 ```
 
 It will not overwrite a directory that already contains files. The starter
-contains the same ten synthetic grants, four-topic codebook, prompts, and
-primary/secondary-label schema as this checked-in example. It omits only this
-example's teaching fixtures and explanatory files. Replace the sample data
+contains the same ten synthetic grants, illustrative reference labels,
+four-topic codebook, prompts, and primary/secondary-label schema as this
+checked-in example. It omits only this example's teaching fixtures and
+explanatory files. Replace the sample data
 and codebook for your task, configure the column mappings and providers in
 `project.yaml`, revise both prompts and `schema.json`, and then validate the
 new project:
@@ -91,7 +92,8 @@ Do not put credentials in YAML, prompt files, shell history shared with others, 
 
 ## 3. Inspect the project
 
-- `data/input-data.csv` has one grant per row and a stable `grant_id`.
+- `data/input-data.csv` has one grant per row, a stable `grant_id`, and an
+  illustrative `reference_primary_label` for local evaluation.
 - `project.yaml` maps `project_title` and `abstract` to model-facing fields while preserving three local metadata columns.
 - `context/codebook.csv` defines the four labels.
 - `prompts/system.txt` contains the coding rules.
@@ -132,6 +134,13 @@ The preserved columns `year`, `investigator`, and `source_file` are joined back
 into results locally and are not placed in `${records_json}`. Similarly, the
 CSV configured as prompt context under the name `codebook` becomes
 `${codebook_json}`.
+
+The `evaluation.gold_columns.primary_label` mapping points to
+`reference_primary_label`. This column is not in `fields_sent` or
+`columns_preserved`, so it stays out of provider prompts and normalized
+results. Its labels are teaching examples, not externally validated research
+ground truth. When substituting your own data, supply reviewed reference
+labels or remove the mapping.
 
 ## 4. Validate locally
 
@@ -177,8 +186,11 @@ strict local validation, including the confidence range.
 user prompts from the segment files. The package also retains
 `input_snapshot/canonical_input.parquet` for preserved-column
 joins, retries, and audits, plus `input_snapshot/request_map.jsonl` for matching API
-requests back to record IDs. Researchers normally do not need to inspect these
-two files. The redundant canonical CSV, model-record JSONL, and separate
+requests back to record IDs. With gold evaluation enabled,
+`input_snapshot/gold_labels.parquet` holds only the selected reference labels;
+its relative path appears in `manifest.json` as `gold_labels_file`.
+Researchers normally do not need to inspect these snapshots. The redundant
+canonical CSV, model-record JSONL, and separate
 rendered-prompt JSONL are not created.
 
 After reviewing those artifacts, run those exact saved requests:
@@ -330,7 +342,11 @@ row provenance is stored directly in these result and failure rows; shared
 prompt, schema, configuration, and environment provenance remains in
 `manifest.json`. The `run_reports/` directory contains only JSON reports:
 `audit.json`, `run_summary.json`, and `usage.json`. See
-`expected/result_columns.md` for normalized columns.
+`expected/result_columns.md` for normalized columns. With the illustrative
+reference labels configured, `run_summary.json` includes
+`evaluation_metrics.primary_label` with the number of matched valid results
+and their exact-match accuracy. Check `audit.json` for missing or invalid
+results before interpreting that metric.
 
 ## 12. Cost boundary
 

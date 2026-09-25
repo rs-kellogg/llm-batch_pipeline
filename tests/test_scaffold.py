@@ -58,6 +58,19 @@ def test_scaffold_codebook_schema_and_preview_agree(tmp_path):
     assert len(input_rows) == 10
     assert input_rows["grant_id"].is_unique
     assert input_rows[["project_title", "abstract"]].notna().all().all()
+    assert input_rows["reference_primary_label"].notna().all()
+    assert dict(zip(input_rows["grant_id"], input_rows["reference_primary_label"])) == {
+        "GRANT-001": "organizational",
+        "GRANT-002": "financial",
+        "GRANT-003": "technical",
+        "GRANT-004": "organizational",
+        "GRANT-005": "financial",
+        "GRANT-006": "technical",
+        "GRANT-007": "other",
+        "GRANT-008": "organizational",
+        "GRANT-009": "financial",
+        "GRANT-010": "technical",
+    }
     assert set(codebook.columns) == {"label", "definition"}
     assert codebook["label"].tolist() == schema["properties"]["primary_label"]["enum"]
     assert schema["properties"]["secondary_label"]["type"] == ["string", "null"]
@@ -67,6 +80,9 @@ def test_scaffold_codebook_schema_and_preview_agree(tmp_path):
     ]
     assert config["input"]["id_column"] == "grant_id"
     assert config["input"]["columns_preserved"] == ["year", "investigator", "source_file"]
+    assert "reference_primary_label" not in config["input"]["fields_sent"].values()
+    assert "reference_primary_label" not in config["input"]["columns_preserved"]
+    assert config["evaluation"]["gold_columns"] == {"primary_label": "reference_primary_label"}
     assert config["prompt"]["context"]["codebook"] == {
         "path": "context/codebook.csv",
         "format": "csv",
@@ -80,6 +96,7 @@ def test_scaffold_codebook_schema_and_preview_agree(tmp_path):
     assert preview.record["record_id"] == input_rows.iloc[0]["grant_id"]
     assert preview.record["project_title"] == input_rows.iloc[0]["project_title"]
     assert all(column not in preview.record for column in config["input"]["columns_preserved"])
+    assert "reference_primary_label" not in preview.record
 
 
 def test_scaffold_prepares_four_record_pilot_locally(tmp_path, monkeypatch):
@@ -99,7 +116,14 @@ def test_scaffold_prepares_four_record_pilot_locally(tmp_path, monkeypatch):
 
     assert manifest["selected_rows"] == len(selected) == 4
     assert manifest["execution"] == "sync"
+    assert manifest["gold_columns"] == {"primary_label": "reference_primary_label"}
+    assert manifest["gold_labels_file"] == "input_snapshot/gold_labels.parquet"
+    gold = pd.read_parquet(run / manifest["gold_labels_file"])
+    assert len(gold) == 4
+    assert set(gold["record_id"]) == set(selected["record_id"])
+    assert set(gold["primary_label"]) <= set(pd.read_csv(root / "context" / "codebook.csv")["label"])
     assert len(requests) == 2
     assert "financial" in requests[0]["body"]["input"]
     assert "GRANT-" in requests[0]["body"]["input"]
+    assert all("reference_primary_label" not in request["body"]["input"] for request in requests)
     assert adapter.submissions == 0
