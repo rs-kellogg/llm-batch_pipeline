@@ -28,7 +28,7 @@ local validation.
   rows with `${codebook_json}` and `${records_json}`, wrapping long lines.
 - Provide sidebar links to every authoring section and show a valid JSON enum
   array example above the guided schema table.
-- Emphasize the stable-ID selector and explain the initialized `data/input.csv`
+- Emphasize the stable-ID selector and explain the initialized `data/grants.csv`
   and `context/` locations directly under the corresponding section headings.
 - Arrange settings in `project.yaml` key order beside a read-only live YAML
   preview produced by the same configuration builder used during Save.

@@ -32,7 +32,7 @@ only when it is saved. The GUI never submits API requests and opens with
 Streamlit's light base theme and larger, sans-serif interface type. Because
 this checked-in example is already initialized, it can be opened directly. For
 your own work, first run `kllm-batch init my-project`, then
-`kllm-batch gui my-project`. The interface identifies `data/input.csv` and
+`kllm-batch gui my-project`. The interface identifies `data/grants.csv` and
 `context/` as the default places for project input and codebook files, and
 Guided/Advanced schema mode changes carry compatible fields in both directions.
 
@@ -52,7 +52,7 @@ my-project/
 ├── project.yaml
 ├── schema.json
 ├── data/
-│   └── input.csv
+│   └── grants.csv
 ├── context/
 │   └── codebook.csv
 ├── prompts/
@@ -62,10 +62,12 @@ my-project/
 ```
 
 It will not overwrite a directory that already contains files. The starter
-contains eight synthetic grants and a four-topic codebook. Replace the sample
-data and codebook for your task, configure the column mappings and providers
-in `project.yaml`, revise both prompts and `schema.json`, and then validate
-the new project:
+contains the same ten synthetic grants, four-topic codebook, prompts, and
+primary/secondary-label schema as this checked-in example. It omits only this
+example's teaching fixtures and explanatory files. Replace the sample data
+and codebook for your task, configure the column mappings and providers in
+`project.yaml`, revise both prompts and `schema.json`, and then validate the
+new project:
 
 ```bash
 kllm-batch validate -c my-project/project.yaml

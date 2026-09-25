@@ -16,7 +16,7 @@ from jsonschema import Draft202012Validator
 from .config import ProjectConfig
 from .data import canonicalize, infer_format, read_table
 from .prompts import load_context_file, render_user_prompt, validate_template
-from .scaffold import PROJECT_YAML, SCHEMA
+from .scaffold import PROJECT_YAML
 from .utils import sha256_file
 from .validation import ProjectValidationError, validate_project
 
@@ -26,6 +26,16 @@ DEFAULT_SYSTEM_PROMPT = (
     "apply the codebook consistently, and return one result for every record_id.\n"
 )
 DEFAULT_USER_PROMPT = "Records:\n\n${records_json}\n"
+GENERIC_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "label": {"type": "string"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "justification": {"type": "string"},
+    },
+    "required": ["label", "confidence", "justification"],
+    "additionalProperties": False,
+}
 SCALAR_TYPES = {"string", "integer", "number", "boolean"}
 PROJECT_CONFIG_ORDER = (
     "version",
@@ -122,9 +132,9 @@ def new_project_draft(project_dir: str | Path) -> ProjectDraft:
     config["input"]["fields_sent"] = {}
     config["input"]["columns_preserved"] = []
     config["input"]["required_fields"] = []
+    config["input"].pop("field_limits", None)
     config["prompt"]["context"] = {}
-    schema = json.loads(SCHEMA)
-    schema["properties"]["label"].pop("enum", None)
+    schema = copy.deepcopy(GENERIC_SCHEMA)
     return ProjectDraft(
         project_dir=root,
         config=config,

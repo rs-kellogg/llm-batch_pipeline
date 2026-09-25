@@ -65,6 +65,12 @@ def test_supported_input_formats(tmp_path):
         assert loaded["record_id"].astype(str).tolist() == ["A", "B"]
 
 
+def test_new_gui_draft_keeps_generic_schema(tmp_path):
+    draft = new_project_draft(tmp_path / "gui-project")
+    assert list(draft.schema["properties"]) == ["label", "confidence", "justification"]
+    assert "enum" not in draft.schema["properties"]["label"]
+
+
 def test_guided_schema_round_trip_and_nullable_enum():
     schema = field_rows_to_schema(
         [
@@ -265,7 +271,7 @@ def test_streamlit_gui_starts_without_api_calls(tmp_path, monkeypatch):
     assert "Save project and validate" in [button.label for button in app.button]
     assert any("Saving overwrites the existing managed" in warning.value for warning in app.warning)
     captions = "\n".join(caption.value for caption in app.caption)
-    assert "data/input.csv" in captions
+    assert "data/grants.csv" in captions
     assert "context/" in captions
     markdown_text = "\n".join(str(block.value) for block in app.markdown)
     assert "prompts/system.txt" in markdown_text

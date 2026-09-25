@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pandas as pd
 import yaml
@@ -18,22 +19,46 @@ def test_scaffold_is_immediately_valid(tmp_path):
     assert report["valid"] is True
 
 
+def test_scaffold_matches_checked_in_grant_example(tmp_path):
+    root = scaffold_project(tmp_path / "project")
+    example = Path(__file__).resolve().parents[1] / "examples" / "grant_coding"
+
+    for relative in (
+        "data/grants.csv",
+        "context/codebook.csv",
+        "schema.json",
+        "prompts/system.txt",
+        "prompts/user.txt",
+    ):
+        assert (root / relative).read_bytes() == (example / relative).read_bytes()
+    assert yaml.safe_load((root / "project.yaml").read_text(encoding="utf-8")) == yaml.safe_load(
+        (example / "project.yaml").read_text(encoding="utf-8")
+    )
+    assert (root / "runs").is_dir()
+    assert not list((root / "runs").iterdir())
+    assert (root / ".gitignore").read_text(encoding="utf-8") == "runs/\n.env\n"
+    assert not (root / "data" / "invalid_duplicate_ids.csv").exists()
+    assert not (root / "expected").exists()
+
+
 def test_scaffold_codebook_schema_and_preview_agree(tmp_path):
     root = scaffold_project(tmp_path / "project")
     config = yaml.safe_load((root / "project.yaml").read_text(encoding="utf-8"))
     schema = json.loads((root / "schema.json").read_text(encoding="utf-8"))
-    input_rows = pd.read_csv(root / "data" / "input.csv")
+    input_rows = pd.read_csv(root / "data" / "grants.csv")
     codebook = pd.read_csv(root / "context" / "codebook.csv")
 
-    assert len(input_rows) == 8
-    assert input_rows["record_id"].is_unique
+    assert len(input_rows) == 10
+    assert input_rows["grant_id"].is_unique
     assert input_rows[["project_title", "abstract"]].notna().all().all()
     assert set(codebook.columns) == {"label", "definition"}
-    assert codebook["label"].tolist() == schema["properties"]["label"]["enum"]
+    assert codebook["label"].tolist() == schema["properties"]["primary_label"]["enum"]
+    assert schema["properties"]["secondary_label"]["enum"] == codebook["label"].tolist() + [None]
     assert codebook["label"].tolist() == [
         "financial", "organizational", "technical", "other"
     ]
-    assert config["input"]["columns_preserved"] == ["year"]
+    assert config["input"]["id_column"] == "grant_id"
+    assert config["input"]["columns_preserved"] == ["year", "investigator", "source_file"]
     assert config["prompt"]["context"]["codebook"] == {
         "path": "context/codebook.csv",
         "format": "csv",
@@ -44,9 +69,9 @@ def test_scaffold_codebook_schema_and_preview_agree(tmp_path):
     assert "organizational" in preview.user_prompt
     assert "technical" in preview.user_prompt
     assert "other" in preview.user_prompt
-    assert preview.record["record_id"] == input_rows.iloc[0]["record_id"]
+    assert preview.record["record_id"] == input_rows.iloc[0]["grant_id"]
     assert preview.record["project_title"] == input_rows.iloc[0]["project_title"]
-    assert "year" not in preview.record
+    assert all(column not in preview.record for column in config["input"]["columns_preserved"])
 
 
 def test_scaffold_prepares_four_record_pilot_locally(tmp_path, monkeypatch):

@@ -154,12 +154,12 @@ placed in prompts. For example:
 .. code-block:: yaml
 
    input:
-     path: data/input.csv
+     path: data/grants.csv
      id_column: grant_id
      fields_sent:
-       project_title: title
-       abstract: abstract_text
-     columns_preserved: [year, investigator]
+       project_title: project_title
+       abstract: abstract
+     columns_preserved: [year, investigator, source_file]
      required_fields: [abstract]
 
 Duplicate normalized IDs and exact duplicate content across all

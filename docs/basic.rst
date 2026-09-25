@@ -9,9 +9,9 @@ a small synchronous pilot, and only then prepare a complete batch.
 1. Create a project
 -------------------
 
-``init`` creates a working mini grant-coding project with eight synthetic
-grants, a four-topic codebook, prompts, a JSON schema, configuration, and an
-empty runs directory. The destination must be empty.
+``init`` creates a working grant-coding project with the same ten synthetic
+grants, four-topic codebook, prompts, schema, and settings as the checked-in
+:doc:`grant_coding` example. The destination must be empty.
 
 .. code-block:: console
 
@@ -22,7 +22,7 @@ The important files are:
 .. code-block:: text
 
    my-project/
-   ├── data/input.csv
+   ├── data/grants.csv
    ├── context/codebook.csv
    ├── prompts/system.txt
    ├── prompts/user.txt
@@ -30,19 +30,23 @@ The important files are:
    ├── schema.json
    └── runs/
 
-The eight rows in ``data/input.csv`` contain a grant ID, title, abstract, and
-year. ``project.yaml`` sends the title and abstract to the model and preserves
-the year locally. ``context/codebook.csv`` defines the ``financial``,
+The ten rows in ``data/grants.csv`` contain a stable ``grant_id``, title,
+abstract, year, investigator, and source file. ``project.yaml`` sends the
+title and abstract to the model and preserves the other three columns locally.
+``context/codebook.csv`` defines the ``financial``,
 ``organizational``, ``technical``, and ``other`` labels. The user prompt inserts
 this CSV as ``${codebook_json}`` alongside the selected records in
-``${records_json}``. The ``label`` enum in ``schema.json`` allows the same four
-values. The package adds ``record_id`` and the outer ``results`` array to the
-response schema.
+``${records_json}``. The ``primary_label`` enum in ``schema.json`` allows the
+same four values; ``secondary_label`` allows one of them or ``null`` when no
+second theme is present. The schema also requires a confidence score and
+justification. The package adds ``record_id`` and the outer ``results`` array
+to the response schema.
 
 You can validate and prepare a pilot with these synthetic files. For your own
 research, replace the input rows and codebook, then update ``project.yaml``,
-both prompts, and ``schema.json`` together. In particular, keep the schema's
-allowed labels aligned with the codebook.
+both prompts, and ``schema.json`` together. In particular, keep both schema
+label fields aligned with the codebook. The :doc:`grant_coding` walkthrough
+uses these same project files and carries the workflow through to results.
 
 .. _optional-gui:
 
