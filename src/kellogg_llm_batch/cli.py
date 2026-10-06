@@ -13,6 +13,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from .attachments import attach_files_to_run
 from .core import audit_run, cancel_run, compare_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, sync_checkpoint_progress, sync_run
 from .scaffold import scaffold_project
 from .state import load_state, resolve_run
@@ -203,6 +204,10 @@ def submit_command(
     try:
         run_dir = resolve_run(run)
         manifest = json.loads((run_dir / "manifest.json").read_text())
+        attachment_status = (manifest.get("file_attachments") or {}).get("status")
+        if attachment_status == "required":
+            raise ValueError("This retry needs files attached before submission; run 'kllm-batch attach-files'.")
+        attached = attachment_status == "ready"
         estimate = manifest["cost_estimate"]["estimated_usd"]
         mode = manifest.get("execution", "batch")
         request_count = manifest["request_count"]
@@ -264,7 +269,8 @@ def submit_command(
                         "not be rerun automatically; use `kllm-batch retry` after processing.[/yellow]"
                     )
             confirmation_count = progress["remaining"]
-            confirmation_estimate = estimate * confirmation_count / request_count if request_count else 0.0
+            if not attached:
+                confirmation_estimate = estimate * confirmation_count / request_count if request_count else 0.0
             if confirmation_count == 0:
                 confirmation_needed = False
                 console.print(
@@ -274,10 +280,18 @@ def submit_command(
         noun = "request" if confirmation_count == 1 else "requests"
         qualifier = " remaining" if mode == "sync" and confirmation_count < request_count else ""
         cost_qualifier = " remaining" if qualifier else ""
-        if confirmation_needed and not yes and not typer.confirm(
-            f"Execute {confirmation_count}{qualifier} {mode} {noun} with estimated maximum{cost_qualifier} "
-            f"cost ${confirmation_estimate:.4f}?"
-        ):
+        if attached:
+            console.print(
+                f"[bold yellow]File input cost is unknown.[/bold yellow] The prepared ${estimate:.4f} "
+                "estimate covers text only; the configured budget does not cap file processing cost."
+            )
+            question = f"Execute {confirmation_count}{qualifier} {mode} {noun} with unknown total cost?"
+        else:
+            question = (
+                f"Execute {confirmation_count}{qualifier} {mode} {noun} with estimated maximum{cost_qualifier} "
+                f"cost ${confirmation_estimate:.4f}?"
+            )
+        if confirmation_needed and not yes and not typer.confirm(question):
             raise typer.Abort()
         def print_sync_progress(completed: int, total: int, outcome) -> None:
             message = f"Completed {completed} out of {total} synchronous requests."
@@ -298,6 +312,32 @@ def submit_command(
         raise typer.Exit()
     except typer.Exit:
         raise
+    except Exception as exc:
+        _fail(exc)
+
+
+@app.command("attach-files")
+def attach_files_command(
+    run: Path = typer.Argument(..., help="Unsubmitted run directory printed by prepare."),
+    column: str = typer.Option(..., help="CSV column containing one PNG or PDF filename per selected row."),
+    files_dir: Path = typer.Option(..., "--files-dir", help="Directory containing the files; relative paths use the project directory."),
+    acknowledge_unestimated_cost: bool = typer.Option(
+        False,
+        "--acknowledge-unestimated-cost",
+        help="Acknowledge that the prepared cost estimate excludes image/PDF processing.",
+    ),
+):
+    """Add one local PNG or PDF to each prepared request without provider calls."""
+    try:
+        attached = attach_files_to_run(
+            run,
+            column=column,
+            files_dir=files_dir,
+            acknowledge_unestimated_cost=acknowledge_unestimated_cost,
+        )
+        console.print(f"Attached files to run: [bold]{attached}[/bold]")
+        console.print("Total cost is unknown because the original estimate covers text only.")
+        console.print(f"Inspect {attached / 'REVIEW.md'} and the attached request files before submitting.")
     except Exception as exc:
         _fail(exc)
 
@@ -400,7 +440,11 @@ def retry_command(run: Path = typer.Argument(..., help="Parent run directory."))
     try:
         child = prepare_retry(run)
         console.print(f"Prepared retry: [bold]{child}[/bold]")
-        console.print(f"Review and submit with: kllm-batch submit {child}")
+        manifest = json.loads((child / "manifest.json").read_text(encoding="utf-8"))
+        if (manifest.get("file_attachments") or {}).get("status") == "required":
+            console.print("Attach the same files to this retry before submitting with `kllm-batch attach-files`.")
+        else:
+            console.print(f"Review and submit with: kllm-batch submit {child}")
     except Exception as exc:
         _fail(exc)
 

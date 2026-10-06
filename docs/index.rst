@@ -22,6 +22,7 @@ New users should follow these pages in order:
 
 The :doc:`advanced` guide covers configuration, retries, comparisons, recovery,
 and provenance. Use the :doc:`cli` page as a compact command index.
+For per-record PNG or PDF inputs, see :doc:`file_attachments`.
 
 .. important::
 
@@ -49,4 +50,5 @@ What the package protects
    project_settings
    grant_coding
    advanced
+   file_attachments
    cli

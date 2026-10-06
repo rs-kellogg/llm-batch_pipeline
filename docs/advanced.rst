@@ -8,6 +8,9 @@ records to retry, or two completed runs need to be compared. Start with the
 relevant workflow below; configuration, recovery, and provenance details
 follow afterward.
 
+For an optional, separate PNG/PDF input step after preparation, see
+:doc:`file_attachments`.
+
 .. contents:: On this page
    :local:
    :depth: 2
@@ -30,6 +33,9 @@ run and its raw responses remain unchanged.
 
 #. Review the child run's ``REVIEW.md``, payloads, and cost estimate, then run
    it through its recorded execution mode:
+
+   An attached-file run requires :doc:`file_attachments` on its retry child
+   before submission.
 
    .. code-block:: console
 

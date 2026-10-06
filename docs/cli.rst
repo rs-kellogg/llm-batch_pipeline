@@ -31,6 +31,10 @@ recovery guidance.
      - ``kllm-batch prepare -c PROJECT_YAML --provider PROVIDER [OPTIONS]``
      - Local
      - Select records and create an immutable, costed run for inspection.
+   * - ``attach-files``
+     - ``kllm-batch attach-files RUN_ID --column NAME --files-dir DIR --acknowledge-unestimated-cost``
+     - Local
+     - Add one PNG/PDF per request to an unsubmitted run. See :doc:`file_attachments`.
    * - ``submit``
      - ``kllm-batch submit RUN_ID [--yes]``
      - Provider / paid

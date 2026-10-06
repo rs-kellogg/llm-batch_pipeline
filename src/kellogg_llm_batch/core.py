@@ -17,6 +17,7 @@ import pandas as pd
 from jsonschema import Draft202012Validator
 
 from ._version import __version__
+from .attachments import request_file_for_segment
 from .config import ProjectConfig, load_config
 from .data import canonicalize, load_source, normalize_id
 from .models import CanonicalRequest, NormalizedResult
@@ -355,6 +356,11 @@ def _write_review(run_dir: Path, manifest: dict[str, Any], records: list[Any]) -
 
 
 def _verify_prepared_artifacts(run_dir: Path, manifest: dict[str, Any]) -> None:
+    attachment_status = (manifest.get("file_attachments") or {}).get("status")
+    if attachment_status == "required":
+        raise ValueError("This retry needs files attached before submission; run 'kllm-batch attach-files'.")
+    if attachment_status is not None and attachment_status != "ready":
+        raise ValueError("Unknown file attachment state; review the run manifest before submission")
     artifacts = manifest.get("prepared_artifact_sha256") or manifest.get("request_artifact_sha256", {})
     for relative_path, expected_hash in artifacts.items():
         path = run_dir / relative_path
@@ -400,10 +406,11 @@ def sync_checkpoint_progress(run: str | Path) -> dict[str, Any]:
     if manifest.get("execution", "batch") != "sync":
         raise ValueError(f"Run {manifest['run_id']} does not use synchronous execution")
     _verify_prepared_artifacts(run_dir, manifest)
+    state = load_state(run_dir)
     expected_ids = {
         str(payload["custom_id"])
-        for index in range(manifest["segment_count"])
-        for payload in ProviderAdapter.read_jsonl(run_dir / "api_requests" / f"segment_{index:04d}.jsonl")
+        for segment in state["segments"]
+        for payload in ProviderAdapter.read_jsonl(request_file_for_segment(run_dir, manifest, segment))
     }
     checkpointed: dict[str, dict[str, Any]] = {}
     for index in range(manifest["segment_count"]):
@@ -465,7 +472,7 @@ def _execute_sync_requests(
             output_path = run_dir / "raw_responses" / f"segment_{segment['index']:04d}_output.jsonl"
             completed_ids = set(_read_sync_checkpoint_results(output_path))
             with output_path.open("a", encoding="utf-8") as handle:
-                for payload in ProviderAdapter.read_jsonl(run_dir / segment["request_file"]):
+                for payload in ProviderAdapter.read_jsonl(request_file_for_segment(run_dir, manifest, segment)):
                     custom_id = str(payload["custom_id"])
                     if custom_id in completed_ids:
                         continue
@@ -510,7 +517,7 @@ def submit_run(
             if segment["remote_batch_id"]:
                 continue
             try:
-                handle = adapter.submit(run_dir / segment["request_file"])
+                handle = adapter.submit(request_file_for_segment(run_dir, manifest, segment))
                 segment.update(status="submitted", remote_batch_id=handle.batch_id, input_file_id=handle.input_file_id, provider_status=handle.status, error=None)
             except Exception as exc:
                 segment.update(status="failed", error=str(exc))
@@ -804,6 +811,10 @@ def _write_run_summary(run_dir: Path, audit: dict[str, Any]) -> None:
         actual_usd = usage["input_tokens"] / 1_000_000 * cost["input_price_per_million"] + usage["output_tokens"] / 1_000_000 * cost["output_price_per_million"]
     evaluation_metrics = _evaluation_metrics(run_dir, manifest)
     summary = {"run_id": manifest["run_id"], "generated_at": utc_now(), "project": manifest["project"], "purpose": manifest.get("purpose", "production"), "execution": manifest.get("execution", "batch"), "selection": manifest.get("selection", {"method": "all"}), "provider": manifest["provider"], "model_requested": manifest["model_requested"], "source_path": manifest["source_path"], "source_sha256": manifest["source_sha256"], "prompt_version": manifest["prompt_version"], "expected_records": audit["expected_records"], "valid_records": audit["valid_records"], "missing_records": len(audit["missing_record_ids"]), "input_tokens": usage["input_tokens"], "output_tokens": usage["output_tokens"], "estimated_maximum_usd": cost["estimated_usd"], "actual_usage_cost_usd": actual_usd, "pricing_as_of": cost.get("pricing_as_of"), "evaluation_metrics": evaluation_metrics, "results_parquet": str(run_dir / "outputs" / "results.parquet"), "results_csv": str(run_dir / "outputs" / "results.csv"), "failures_jsonl": str(run_dir / "outputs" / "failures.jsonl") if (run_dir / "outputs" / "failures.jsonl").exists() else None}
+    if (manifest.get("file_attachments") or {}).get("status") == "ready":
+        summary["text_only_estimate_usd"] = summary["estimated_maximum_usd"]
+        summary["estimated_maximum_usd"] = None
+        summary["cost_estimate_scope"] = "text_only_excludes_files"
     atomic_write_json(run_dir / "run_reports" / "run_summary.json", summary)
 
 
@@ -873,13 +884,37 @@ def prepare_retry(run: str | Path) -> Path:
     manifest = _manifest(run_dir)
     if sha256_file(Path(manifest["source_path"])) != manifest["source_sha256"]:
         raise ValueError("Source data changed after the parent run; restore the original source snapshot or start a new run")
-    return prepare_run(
+    child_run = prepare_run(
         manifest["config_path"],
         manifest["provider"],
         execution=manifest.get("execution", "batch"),
         selected_ids=selected,
         parent_run=str(run_dir),
     )
+    attachments = manifest.get("file_attachments") or {}
+    if attachments.get("status") == "ready":
+        child_manifest_path = child_run / "manifest.json"
+        child_manifest = _manifest(child_run)
+        child_manifest["file_attachments"] = {
+            "status": "required",
+            "parent_run": str(run_dir),
+            "column": attachments["column"],
+            "files_directory": attachments["files_directory"],
+            "expected_hashes": {
+                item["record_id"]: item["sha256"]
+                for item in attachments["files"]
+                if item["record_id"] in selected
+            },
+        }
+        atomic_write_json(child_manifest_path, child_manifest)
+        with (child_run / "REVIEW.md").open("a", encoding="utf-8") as handle:
+            handle.write(
+                "\n## Required before submission\n\n"
+                "This is a retry of an attached-file run. Run `kllm-batch attach-files` "
+                "with the parent's column and files directory before `submit`; "
+                "submission will refuse this child until the files are attached.\n"
+            )
+    return child_run
 
 
 def merge_run(run: str | Path) -> Path:
