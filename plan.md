@@ -1,8 +1,8 @@
 # Kellogg Reliable LLM Batch Pipeline implementation plan
 
-The accepted, detailed specification is preserved in
-[`plan_gen_v4.md`](plan_gen_v4.md). It is the normative plan for this
-repository; this shorter file is its implementation index.
+This file consolidates the accepted implementation direction for the
+repository. Earlier generated drafts have been removed so there is one plan to
+consult alongside the current user documentation and tests.
 
 ## Package and workflow
 
