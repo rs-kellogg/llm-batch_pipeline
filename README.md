@@ -6,6 +6,9 @@ Anthropic batch APIs.
 
 **[Read the complete documentation](https://rs-kellogg.github.io/llm-batch_pipeline/)**
 
+Building a related tool or research pipeline? Start with the reusable
+[LLM research pipeline checklist](RESEARCH_LLM_PIPELINE_CHECKLIST.md).
+
 The package keeps local preparation separate from paid API operations.
 `init`, `validate`, and `prepare` are local. `submit` executes the exact
 prepared artifacts and may incur model charges. Batch-mode `status`, `sync`,

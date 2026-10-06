@@ -32,10 +32,9 @@ run and its raw responses remain unchanged.
       $ kllm-batch retry RUN_ID
 
 #. Review the child run's ``REVIEW.md``, payloads, and cost estimate, then run
-   it through its recorded execution mode:
-
-   An attached-file run requires :doc:`file_attachments` on its retry child
-   before submission.
+   it through its recorded execution mode. If the parent had attached files,
+   first run ``attach-files`` on the child as described in
+   :doc:`file_attachments`; ``submit`` refuses it until then.
 
    .. code-block:: console
 

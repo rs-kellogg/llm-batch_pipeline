@@ -26,8 +26,8 @@ For per-record PNG or PDF inputs, see :doc:`file_attachments`.
 
 .. important::
 
-   ``init``, ``validate``, ``prepare``, ``audit``, ``retry``, ``merge``, and
-   ``compare`` are local commands. ``submit`` contacts a provider and may incur
+   ``init``, ``validate``, ``prepare``, ``attach-files``, ``audit``, ``retry``,
+   ``merge``, and ``compare`` are local commands. ``submit`` contacts a provider and may incur
    model charges. For batch runs, ``status``, ``sync``, and ``cancel`` also
    contact the provider.
 

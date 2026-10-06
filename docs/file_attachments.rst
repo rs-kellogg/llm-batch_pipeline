@@ -32,6 +32,10 @@ For example, the CSV could contain:
    G001,Community research,Study summary,grant-001.pdf
    G002,Instrument design,Study summary,grant-002.png
 
+Because the filename column is not sent, ``validate`` still treats rows whose
+mapped text fields are identical as duplicates, even if their files differ.
+Send a field that distinguishes each record, such as a title or caption.
+
 Set ``task.rows_per_request: 1`` in ``project.yaml`` so each request has one
 record and one file. Then validate and prepare normally. To test the actual
 file-input workflow, attach files to a selected pilot *before* submitting it:
@@ -43,6 +47,9 @@ file-input workflow, attach files to a selected pilot *before* submitting it:
    $ kllm-batch attach-files PILOT_RUN_ID --column attachment_file \
        --files-dir data/attachments --acknowledge-unestimated-cost
    $ kllm-batch submit PILOT_RUN_ID
+
+A relative ``--files-dir`` is resolved against the directory containing
+``project.yaml``, not the current directory; use an absolute path if unsure.
 
 For the full batch, run ``prepare`` without ``--sample-size``, then
 ``attach-files`` on that new run before ``submit``. The same command works with
