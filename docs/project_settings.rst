@@ -42,10 +42,24 @@ Input data
      required_fields: [abstract]
 
 * ``path`` — the source table.
-* ``format`` — ``auto`` selects the reader from the filename extension, not
-  its contents (the starter's ``.csv`` is read as CSV). Input also supports
-  Parquet and JSON Lines; set this explicitly if the extension doesn't match
-  the intended format. ``csv_encoding`` is ``utf-8`` in the starter.
+* ``format`` — the file type to read: CSV, Parquet, or JSON Lines. ``auto``
+  (the default) guesses from the filename extension, so the starter's
+  ``.csv`` file is read as CSV. Set it explicitly if your file's extension
+  doesn't match its actual format.
+* ``csv_encoding`` — the text encoding for CSV files, ``utf-8`` by default.
+  Change it if your file was saved with a different encoding (for example,
+  a CSV exported from Excel on Windows is often ``cp1252``/``latin-1``) —
+  reading it with the wrong encoding produces an error or garbled text. Set
+  ``input.csv_encoding`` to any Python codec name, for example:
+
+  .. code-block:: yaml
+
+     input:
+       csv_encoding: cp1252
+
+  If you aren't sure which encoding your file uses, check how it was
+  exported (e.g. Excel's "CSV UTF-8" vs. plain "CSV" save option) or open it
+  in a text editor that reports encoding.
 * ``id_column`` — the source column used for stable record IDs. The package
   also supplies each record's ``record_id`` from this column.
 * ``fields_sent`` — maps a model-facing name (left) to a source column
