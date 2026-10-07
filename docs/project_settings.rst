@@ -124,8 +124,13 @@ Providers and budget
    providers:
      openai:
        model: gpt-5-mini
+       options:
+         reasoning:
+           effort: low
      anthropic:
        model: claude-haiku-4-5
+       options:
+         temperature: 0
 
    budget:
      max_estimated_usd: 5.0
@@ -134,8 +139,38 @@ Providers and budget
   openai`` or ``prepare --provider anthropic`` chooses one for a run; listing
   providers here does not contact them. Credentials come from environment
   variables, not this file.
+* ``options`` — provider-native generation settings copied into every request
+  for that provider. The starter uses low reasoning effort for the OpenAI
+  reasoning model and temperature zero for Claude Haiku 4.5. Omitting
+  ``options`` uses the provider and model defaults.
 * ``budget.max_estimated_usd`` — blocks a run whose estimated maximum cost
   exceeds this ceiling.
+
+Common OpenAI options include ``temperature`` (0–2), ``top_p`` (0–1), and
+``reasoning.effort``. Common Anthropic options include ``temperature`` (0–1),
+``top_p`` (0–1), ``top_k`` (a nonnegative integer), and ``stop_sequences`` (an
+array of strings). Unknown provider-native keys pass through so that new API
+features do not require an immediate package release. ``validate`` checks
+known value ranges and warns when both ``temperature`` and ``top_p`` are set;
+provider guidance recommends changing one sampling control at a time.
+
+Option support also depends on the selected model. Some OpenAI reasoning
+configurations restrict sampling controls, and Claude 4.7 and later models do
+not support ``temperature``, ``top_p``, or ``top_k``. Remove incompatible
+options when changing models. A temperature of zero can improve sampling
+consistency on supported Claude models, but it does not make responses fully
+deterministic.
+
+``seed`` is not a supported option for the OpenAI Responses or Anthropic
+Messages endpoints used here. ``evaluation.random_seed`` below, and the
+``prepare --seed`` override, control only which input rows are selected for a
+pilot. They do not control model generation.
+
+The package manages the model, prompts, token limit, and structured-output
+configuration, so their provider request keys cannot be supplied under
+``options``. After preparation, inspect the exact settings in
+``RUN_DIR/api_requests/segment_*.jsonl`` and the normalized copy in
+``RUN_DIR/manifest.json`` under ``provider_options`` before submission.
 
 See :doc:`installation` for credentials and :doc:`advanced` for provider
 options, pricing overrides, and batch limits.
@@ -155,8 +190,9 @@ Evaluation and output
      write_csv: true
      runs_directory: runs
 
-* ``random_seed`` — used for deterministic sampling when ``prepare
-  --sample-size`` is given without ``--seed``.
+* ``random_seed`` — used for deterministic input-row sampling when ``prepare
+  --sample-size`` is given without ``--seed``. It does not seed model
+  generation.
 * ``gold_columns`` — maps a predicted schema field (``primary_label``) to a
   local source column (``reference_primary_label``) that stays out of
   ``fields_sent``/``columns_preserved`` and so never enters provider prompts

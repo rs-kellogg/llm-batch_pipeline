@@ -41,6 +41,12 @@ def test_scaffold_matches_checked_in_grant_example(tmp_path):
     assert generated_config["input"]["path"] == "data/input-data.csv"
     assert (root / generated_config["input"]["path"]).is_file()
     assert generated_config == example_config
+    assert generated_config["providers"]["openai"]["options"] == {
+        "reasoning": {"effort": "low"}
+    }
+    assert generated_config["providers"]["anthropic"]["options"] == {
+        "temperature": 0
+    }
     assert (root / "runs").is_dir()
     assert not list((root / "runs").iterdir())
     assert (root / ".gitignore").read_text(encoding="utf-8") == "runs/\n.env\n"
@@ -106,6 +112,9 @@ def test_scaffold_prepares_four_record_pilot_locally(tmp_path, monkeypatch):
 
     run = prepare_run(root / "project.yaml", "openai", sample_size=4, seed=42)
     manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    project_snapshot = yaml.safe_load(
+        (run / "project_snapshot" / "project.yaml").read_text(encoding="utf-8")
+    )
     selected = pd.read_parquet(run / "input_snapshot" / "canonical_input.parquet")
     segment_files = sorted((run / "api_requests").glob("segment_*.jsonl"))
     requests = [
@@ -117,6 +126,8 @@ def test_scaffold_prepares_four_record_pilot_locally(tmp_path, monkeypatch):
     assert manifest["selected_rows"] == len(selected) == 4
     assert manifest["execution"] == "sync"
     assert manifest["gold_columns"] == {"primary_label": "reference_primary_label"}
+    assert manifest["provider_options"] == {"reasoning": {"effort": "low"}}
+    assert project_snapshot["providers"]["openai"]["options"] == manifest["provider_options"]
     assert manifest["gold_labels_file"] == "input_snapshot/gold_labels.parquet"
     gold = pd.read_parquet(run / manifest["gold_labels_file"])
     assert len(gold) == 4

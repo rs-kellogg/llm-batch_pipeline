@@ -7,6 +7,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .provider_options import validate_provider_options
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -148,6 +150,11 @@ class ProjectConfig(StrictModel):
             raise ValueError(f"unsupported providers: {sorted(unsupported)}")
         if not value:
             raise ValueError("at least one provider is required")
+        for provider, settings in value.items():
+            try:
+                validate_provider_options(provider, settings.options)
+            except ValueError as exc:
+                raise ValueError(f"providers.{provider}.{exc}") from exc
         return value
 
     def resolve(self, path: Path) -> Path:

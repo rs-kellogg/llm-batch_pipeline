@@ -24,6 +24,39 @@ def test_example_validates(example_config):
     assert report["request_count"] == 4
 
 
+def test_multiple_sampling_controls_warn(example_config, tmp_path):
+    raw = yaml.safe_load(example_config.read_text())
+    _absolute_support_paths(raw, example_config)
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
+    raw["providers"]["openai"]["options"] = {"temperature": 0.2, "top_p": 0.9}
+    config = tmp_path / "multiple-sampling-controls.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    report = validate_project(config)
+
+    assert report["valid"] is True
+    assert "multiple_sampling_controls" in {
+        finding["code"] for finding in report["findings"]
+    }
+
+
+@pytest.mark.parametrize("provider", ["openai", "anthropic"])
+def test_generation_seed_is_rejected_with_selection_guidance(
+    example_config, tmp_path, provider
+):
+    raw = yaml.safe_load(example_config.read_text())
+    _absolute_support_paths(raw, example_config)
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
+    raw["providers"][provider]["options"] = {"seed": 42}
+    config = tmp_path / f"invalid-{provider}-seed.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    with pytest.raises(ProjectValidationError) as exc:
+        validate_project(config)
+
+    assert "select input rows only" in str(exc.value)
+
+
 @pytest.mark.parametrize(
     ("filename", "code"),
     [("invalid_duplicate_ids.csv", "duplicate_record_id"), ("invalid_duplicate_content.csv", "duplicate_content")],

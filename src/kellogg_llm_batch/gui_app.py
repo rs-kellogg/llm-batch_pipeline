@@ -18,6 +18,7 @@ from kellogg_llm_batch.authoring import (
     field_rows_to_schema,
     load_input_table,
     load_project_draft,
+    parse_provider_options_json,
     render_project_preview,
     render_project_yaml,
     save_project_draft,
@@ -600,6 +601,7 @@ def _prompt_controls(draft: ProjectDraft) -> None:
 def _settings_and_save(draft: ProjectDraft) -> None:
     st.subheader("5. Settings, save, and validate", anchor="settings-save")
     config = draft.config
+    settings_errors: list[str] = []
     settings_col, yaml_col = st.columns([1, 1], gap="large")
     with settings_col:
         st.markdown("#### Settings")
@@ -641,6 +643,22 @@ def _settings_and_save(draft: ProjectDraft) -> None:
         for name in selected:
             item = dict(existing.get(name, {}))
             item["model"] = st.text_input(f"{name} model", value=item.get("model", defaults[name]), key=f"model_{name}")
+            options_json = st.text_area(
+                f"{name} options (JSON)",
+                value=json.dumps(item.get("options", {}), indent=2, ensure_ascii=False),
+                key=f"options_{name}",
+                height=140,
+                help=(
+                    "Provider-native request options. The project manages model, prompts, "
+                    "token limits, and structured output separately."
+                ),
+            )
+            try:
+                item["options"] = parse_provider_options_json(options_json)
+            except ValueError as exc:
+                message = f"{name}: {exc}"
+                settings_errors.append(message)
+                st.error(message)
             providers[name] = item
         config["providers"] = providers
 
@@ -678,6 +696,8 @@ def _settings_and_save(draft: ProjectDraft) -> None:
     )
     if save_requested:
         try:
+            if settings_errors:
+                raise ValueError("Correct the provider options JSON before saving")
             draft.project_dir = Path(st.session_state.project_directory).expanduser().resolve()
             draft.system_prompt = st.session_state.system_prompt
             draft.user_prompt = st.session_state.user_prompt

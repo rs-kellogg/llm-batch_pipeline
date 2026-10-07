@@ -48,8 +48,13 @@ prompt:
 providers:
   openai:
     model: gpt-5-mini
+    options:
+      reasoning:
+        effort: low
   anthropic:
     model: claude-haiku-4-5
+    options:
+      temperature: 0
 
 budget:
   max_estimated_usd: 5.0

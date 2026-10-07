@@ -68,6 +68,17 @@ def _represent_double_quoted_string(dumper: yaml.Dumper, value: _DoubleQuotedStr
 _ProjectYAMLDumper.add_representer(_DoubleQuotedString, _represent_double_quoted_string)
 
 
+def parse_provider_options_json(value: str) -> dict[str, Any]:
+    """Parse the project builder's provider-options editor."""
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Provider options must be valid JSON: {exc.msg}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("Provider options must be a JSON object")
+    return parsed
+
+
 def _format_project_yaml(config: dict[str, Any]) -> str:
     """Render one stable, readable style for the GUI preview and saved file."""
     formatted_config = copy.deepcopy(config)

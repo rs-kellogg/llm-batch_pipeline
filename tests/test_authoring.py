@@ -14,6 +14,7 @@ from kellogg_llm_batch.authoring import (
     load_input_table,
     load_project_draft,
     new_project_draft,
+    parse_provider_options_json,
     render_project_preview,
     render_project_yaml,
     save_project_draft,
@@ -70,6 +71,22 @@ def test_new_gui_draft_keeps_generic_schema(tmp_path):
     assert list(draft.schema["properties"]) == ["label", "confidence", "justification"]
     assert "enum" not in draft.schema["properties"]["label"]
     assert draft.config["evaluation"]["gold_columns"] == {}
+    assert draft.config["providers"]["openai"]["options"] == {
+        "reasoning": {"effort": "low"}
+    }
+    assert draft.config["providers"]["anthropic"]["options"] == {
+        "temperature": 0
+    }
+
+
+def test_provider_options_json_editor_parser():
+    assert parse_provider_options_json('{"reasoning": {"effort": "low"}}') == {
+        "reasoning": {"effort": "low"}
+    }
+    with pytest.raises(ValueError, match="valid JSON"):
+        parse_provider_options_json('{"temperature":')
+    with pytest.raises(ValueError, match="JSON object"):
+        parse_provider_options_json("[]")
 
 
 def test_gui_save_keeps_initialized_gold_mapping(tmp_path):

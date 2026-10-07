@@ -9,6 +9,7 @@ from .config import ProjectConfig, load_config
 from .data import canonicalize, load_source, record_content_key
 from .models import AuditFinding, CanonicalRecord
 from .pricing import estimate_cost
+from .provider_options import uses_multiple_sampling_controls
 from .prompts import load_context, load_prompt_files, render_user_prompt, validate_template
 from .providers.base import get_provider
 from .schema import load_row_schema, wrapped_schema
@@ -71,6 +72,18 @@ def validate_project(config_or_path: ProjectConfig | str | Path, report_path: st
 def _validate_project(config_or_path: ProjectConfig | str | Path, report_path: str | Path | None = None) -> dict:
     config = config_or_path if isinstance(config_or_path, ProjectConfig) else load_config(config_or_path)
     findings: list[AuditFinding] = []
+    for provider_name, settings in config.providers.items():
+        if uses_multiple_sampling_controls(settings.options):
+            findings.append(
+                AuditFinding(
+                    severity="warning",
+                    code="multiple_sampling_controls",
+                    message=(
+                        f"{provider_name} options set both temperature and top_p; provider "
+                        "guidance recommends changing one sampling control at a time"
+                    ),
+                )
+            )
     df, source, fmt = load_source(config)
     records = canonicalize(config, df, source)
     if not records:

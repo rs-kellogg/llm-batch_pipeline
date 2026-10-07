@@ -9,15 +9,21 @@ SCHEMA = {"type": "object", "properties": {}, "required": [], "additionalPropert
 
 
 def test_openai_payload_uses_responses_structured_output():
-    payload = OpenAIAdapter(client=object()).build_payload("request_1", "gpt-5-mini", "system", "user", SCHEMA, 100, {})
+    options = {"reasoning": {"effort": "low"}, "future_option": True}
+    payload = OpenAIAdapter(client=object()).build_payload("request_1", "gpt-5-mini", "system", "user", SCHEMA, 100, options)
     assert payload["url"] == "/v1/responses"
     assert payload["body"]["text"]["format"]["schema"] == SCHEMA
+    assert payload["body"]["reasoning"] == {"effort": "low"}
+    assert payload["body"]["future_option"] is True
 
 
 def test_anthropic_payload_uses_output_config():
-    payload = AnthropicAdapter(client=object()).build_payload("request_1", "claude-haiku-4-5", "system", "user", SCHEMA, 100, {})
+    options = {"temperature": 0, "future_option": True}
+    payload = AnthropicAdapter(client=object()).build_payload("request_1", "claude-haiku-4-5", "system", "user", SCHEMA, 100, options)
     assert payload["params"]["output_config"]["format"]["schema"] == SCHEMA
     assert payload["params"]["messages"][0]["content"] == "user"
+    assert payload["params"]["temperature"] == 0
+    assert payload["params"]["future_option"] is True
 
 
 def test_anthropic_payload_converts_nullable_enum_and_unsupported_bounds():
@@ -103,6 +109,60 @@ def test_anthropic_normalizes_out_of_order_result_line():
     assert result.custom_id == "request_2"
     assert result.model == "claude-test-snapshot"
     assert result.output_tokens == 3
+
+
+def test_openai_sync_request_keeps_provider_options():
+    class Responses:
+        @staticmethod
+        def create(**kwargs):
+            assert kwargs["reasoning"] == {"effort": "low"}
+            return SimpleNamespace(
+                model_dump=lambda: {
+                    "model": "gpt-test-snapshot",
+                    "output_text": '{"results": []}',
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                }
+            )
+
+    adapter = OpenAIAdapter(client=SimpleNamespace(responses=Responses()))
+    payload = adapter.build_payload(
+        "request_1",
+        "gpt-5-mini",
+        "system",
+        "user",
+        SCHEMA,
+        100,
+        {"reasoning": {"effort": "low"}},
+    )
+
+    assert adapter.run_sync(payload).status == "succeeded"
+
+
+def test_anthropic_sync_request_keeps_provider_options():
+    class Messages:
+        @staticmethod
+        def create(**kwargs):
+            assert kwargs["temperature"] == 0
+            return SimpleNamespace(
+                model_dump=lambda: {
+                    "model": "claude-test-snapshot",
+                    "content": [{"type": "text", "text": '{"results": []}'}],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                }
+            )
+
+    adapter = AnthropicAdapter(client=SimpleNamespace(messages=Messages()))
+    payload = adapter.build_payload(
+        "request_1",
+        "claude-haiku-4-5",
+        "system",
+        "user",
+        SCHEMA,
+        100,
+        {"temperature": 0},
+    )
+
+    assert adapter.run_sync(payload).status == "succeeded"
 
 
 def test_openai_mocked_batch_lifecycle(tmp_path):

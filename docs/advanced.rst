@@ -250,6 +250,11 @@ and explicit sync or batch input/output prices — unknown pricing blocks
 preparation until dated price overrides are configured, regardless of
 ``budget.max_estimated_usd``.
 
+Provider options are copied into the exact prepared requests and recorded in
+the run manifest. See :doc:`project_settings` for supported common controls,
+reserved request keys, model-compatibility cautions, and the distinction
+between model generation settings and the pilot row-selection seed.
+
 Understand artifacts and provenance
 -----------------------------------
 
