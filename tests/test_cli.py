@@ -183,6 +183,37 @@ def test_submit_warns_only_when_resuming_partial_sync_run(example_config, tmp_pa
     assert fake.sync_calls == 1
 
 
+def test_cancel_command_cancels_a_submitted_run(example_config, tmp_path, monkeypatch):
+    raw = yaml.safe_load(example_config.read_text())
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
+    raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
+    raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
+    raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
+    raw["prompt"]["context"]["codebook"]["path"] = str(example_config.parent / "context" / "codebook.csv")
+    raw["output"]["runs_directory"] = str(tmp_path / "runs")
+    config = tmp_path / "project.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+
+    assert runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai", "--execution", "batch"]).exit_code == 0
+    run = next((tmp_path / "runs").iterdir())
+    assert runner.invoke(app, ["submit", str(run), "--yes"]).exit_code == 0
+
+    result = runner.invoke(app, ["cancel", str(run)])
+
+    assert result.exit_code == 0, result.stdout
+    state = json.loads((run / "state.json").read_text(encoding="utf-8"))
+    assert state["status"] == "cancelled"
+    assert all(segment["status"] == "cancelled" for segment in state["segments"])
+
+
+def test_cancel_command_reports_errors_for_unknown_run(tmp_path):
+    result = runner.invoke(app, ["cancel", str(tmp_path / "missing-run")])
+    assert result.exit_code == 1
+    assert "Run not found" in result.stdout
+
+
 def test_sync_watch_prints_each_poll_status(example_config, tmp_path, monkeypatch):
     class DelayedAdapter(FakeAdapter):
         def __init__(self):

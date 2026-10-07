@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 import kellogg_llm_batch.core as core
-from kellogg_llm_batch.core import audit_run, compare_runs, prepare_retry, prepare_run, submit_run, sync_run
+from kellogg_llm_batch.core import audit_run, cancel_run, compare_runs, prepare_retry, prepare_run, submit_run, sync_run
 from kellogg_llm_batch.providers.base import ProviderAdapter
 from kellogg_llm_batch.state import load_state, save_state
 
@@ -415,3 +415,79 @@ def test_state_recovers_last_valid_copy(example_config, tmp_path, monkeypatch):
     recovered = load_state(run)
     assert recovered["status"] == "prepared"
     assert recovered["stage"] == "prepared"
+
+
+def test_prepare_rejects_run_exceeding_budget(example_config, tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["budget"]["max_estimated_usd"] = 0.0000001
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"Estimated cost \$\d.*exceeds budget \$0\.0000"):
+        prepare_run(config, "openai")
+    assert not (tmp_path / "runs").exists()
+
+
+def test_prepare_rejects_run_with_no_pricing_configured(example_config, tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["providers"]["openai"]["model"] = "gpt-unreleased-model"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="No pricing is configured for openai/gpt-unreleased-model"):
+        prepare_run(config, "openai")
+    assert not (tmp_path / "runs").exists()
+
+
+def test_prepare_allows_unpriced_model_once_overrides_are_added(example_config, tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["providers"]["openai"]["model"] = "gpt-unreleased-model"
+    raw["providers"]["openai"]["input_price_per_million"] = 1.0
+    raw["providers"]["openai"]["output_price_per_million"] = 2.0
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    run = prepare_run(config, "openai")
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["cost_estimate"]["input_price_per_million"] == 1.0
+    assert manifest["cost_estimate"]["pricing_as_of"] == "project.yaml override"
+
+
+class RecordingCancelAdapter(FakeAdapter):
+    def __init__(self):
+        super().__init__()
+        self.cancelled_batch_ids: list[str] = []
+
+    def cancel(self, batch_id):
+        self.cancelled_batch_ids.append(batch_id)
+        return super().cancel(batch_id)
+
+
+def test_cancel_run_cancels_submitted_segments_and_marks_run_cancelled(example_config, tmp_path, monkeypatch):
+    adapter = RecordingCancelAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    run = prepare_run(_temporary_config(example_config, tmp_path), "openai", execution="batch")
+    submit_run(run, adapter)
+    submitted_batch_ids = [segment["remote_batch_id"] for segment in load_state(run)["segments"]]
+    assert submitted_batch_ids
+
+    state = cancel_run(run, adapter)
+
+    assert state["status"] == "cancelled"
+    assert sorted(adapter.cancelled_batch_ids) == sorted(submitted_batch_ids)
+    assert all(segment["status"] == "cancelled" for segment in state["segments"])
+    assert load_state(run)["status"] == "cancelled"
+
+
+def test_cancel_run_on_unsubmitted_run_calls_provider_for_nothing(example_config, tmp_path, monkeypatch):
+    adapter = RecordingCancelAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    run = prepare_run(_temporary_config(example_config, tmp_path), "openai", execution="batch")
+
+    state = cancel_run(run, adapter)
+
+    assert adapter.cancelled_batch_ids == []
+    assert all(segment["status"] == "prepared" for segment in state["segments"])
