@@ -34,6 +34,7 @@ Input data
    input:
      path: data/input-data.csv
      format: auto
+     csv_encoding: utf-8
      id_column: grant_id
      fields_sent:
        project_title: project_title
@@ -105,15 +106,15 @@ Prompts and codebook
          path: context/codebook.csv
          format: csv
 
+* ``prompt.version`` — a version label recorded with the run. Keep it quoted
+  (``"1.0"``) so YAML reads it as a string, and update it when you
+  intentionally revise the prompt.
 * ``system_file`` / ``user_file`` — the model instructions. The user prompt
   must insert ``${records_json}`` for each request.
 * ``context.codebook`` — a named context file, inserted as
   ``${codebook_json}``. ``format: auto`` works by filename extension; ``csv``
   states it explicitly, as the starter does. Keep codebook labels aligned
   with the enums in ``schema.json``.
-* ``prompt.version`` — a version label recorded with the run. Keep it quoted
-  (``"1.0"``) so YAML reads it as a string, and update it when you
-  intentionally revise the prompt.
 
 Providers and budget
 --------------------
@@ -164,10 +165,12 @@ Evaluation and output
   ``gold_labels_file`` in the manifest); after processing,
   ``RUN_ID/run_reports/run_summary.json`` reports exact-match accuracy under
   ``evaluation_metrics.primary_label``. Validation rejects a mapping to a
-  missing column.
-* ``write_parquet`` / ``write_csv`` — the starter writes both formats under
-  ``runs/``; each prepared run gets its own directory there, separate from
-  the original input data.
+  missing column. (``RUN_ID`` is the run directory that ``prepare`` prints —
+  see :doc:`basic`.)
+* ``write_parquet`` / ``write_csv`` — whether to write results in each
+  format; the starter writes both.
+* ``runs_directory`` — where each prepared run gets its own subdirectory
+  (``runs`` in the starter), separate from the original input data.
 
 The starter labels are illustrative, not externally validated research ground
 truth. When replacing the input, provide your own reviewed reference column
