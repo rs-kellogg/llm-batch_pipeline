@@ -30,28 +30,31 @@ The important files are:
    ├── schema.json
    └── runs/
 
-The ten rows in ``data/input-data.csv`` contain a stable ``grant_id``, title,
-abstract, year, investigator, source file, and illustrative reference label.
-``project.yaml`` sends the title and abstract to the model, preserves year,
-investigator, and source file locally, and uses the reference label only for
-local evaluation.
-``context/codebook.csv`` defines the ``financial``,
-``organizational``, ``technical``, and ``other`` labels. The user prompt inserts
-this CSV as ``${codebook_json}`` alongside the selected records in
-``${records_json}``. The ``primary_label`` enum in ``schema.json`` allows the
-same four values; ``secondary_label`` allows one of them or ``null`` when no
-second theme is present. The schema also requires a confidence score and
-justification. The package adds ``record_id`` and the outer ``results`` array
-to the response schema.
+* ``data/input-data.csv`` — ten rows with a stable ``grant_id``, title,
+  abstract, year, investigator, source file, and an illustrative reference
+  label.
+* ``project.yaml`` — sends title and abstract to the model, keeps year,
+  investigator, and source file local, and uses the reference label only for
+  local evaluation.
+* ``context/codebook.csv`` — defines the ``financial``, ``organizational``,
+  ``technical``, and ``other`` labels, inserted into the prompt as
+  ``${codebook_json}`` alongside the records in ``${records_json}``.
+* ``schema.json`` — requires ``primary_label`` (one of the four codebook
+  values), an optional ``secondary_label`` (one of them, or ``null``), a
+  confidence score, and a justification. The package adds ``record_id`` and
+  the outer ``results`` array.
 
-You can validate and prepare a pilot with these synthetic files. For your own
-research, replace the input rows and codebook, then update ``project.yaml``,
-both prompts, and ``schema.json`` together. Replace the illustrative reference
-labels with your own reviewed labels or remove the gold-column mapping. In
-particular, keep both schema label fields aligned with the codebook. See
-:doc:`project_settings` for a short guide to the YAML file. The
-:doc:`grant_coding` walkthrough uses these same project files and carries the
-workflow through to results.
+You can validate and prepare a pilot with these synthetic files as-is. For
+your own research:
+
+* replace the input rows and codebook;
+* update ``project.yaml``, both prompts, and ``schema.json`` together, keeping
+  both schema label fields aligned with the codebook; and
+* replace the illustrative reference labels with your own reviewed labels, or
+  remove the gold-column mapping.
+
+See :doc:`project_settings` for a field-by-field guide to the YAML file, and
+:doc:`grant_coding` for this same project carried through to results.
 
 .. _optional-gui:
 
@@ -65,11 +68,16 @@ initialized project in a local browser, run:
 
    $ kllm-batch gui my-project
 
-The builder edits the same YAML, schema, prompt, input, and context files used
-by the CLI. It can map input columns, draft the response schema and prompts,
-preview a complete request, save explicitly, and run local validation. Use
-``--no-browser`` to start the GUI without opening a browser automatically, or
-``--port PORT`` to choose another local port.
+The builder edits the same files as the CLI. It can:
+
+* map input columns;
+* draft the response schema and prompts;
+* preview a complete request;
+* save explicitly; and
+* run local validation.
+
+Use ``--no-browser`` to skip auto-opening a browser, or ``--port PORT`` to
+choose another local port.
 
 2. Validate locally
 -------------------
@@ -78,10 +86,15 @@ preview a complete request, save explicitly, and run local validation. Use
 
    $ kllm-batch validate -c my-project/project.yaml
 
-Validation is local and free. It checks configuration, missing required
-values, normalized record IDs, duplicate model inputs, prompts, schema, request
-sizes, and estimated costs. Fix every ``ERROR`` before continuing. Failed
-validation creates no run or provider payload.
+``validate`` is local and free. It checks:
+
+* configuration and missing required values;
+* normalized record IDs and duplicate model inputs;
+* prompts and schema; and
+* request sizes and estimated costs.
+
+Fix every ``ERROR`` before continuing — failed validation creates no run or
+provider payload.
 
 3. Prepare and inspect a pilot
 ------------------------------
