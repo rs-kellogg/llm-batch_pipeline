@@ -21,9 +21,10 @@ Project identity
      name: grant-topic-coding
      description: Classify synthetic grant abstracts using a small codebook.
 
-``version: 1`` identifies the configuration format. Under ``project``, give
-your study a recognizable ``name`` and ``description``. These describe the
-project; they do not choose a provider or submit requests.
+* ``version: 1`` — identifies the configuration format.
+* ``project.name`` / ``project.description`` — a recognizable name and
+  description for your study. These are descriptive only; they do not choose
+  a provider or submit requests.
 
 Input data
 ----------
@@ -40,20 +41,21 @@ Input data
      columns_preserved: [year, investigator, source_file]
      required_fields: [abstract]
 
-``path`` points to the source table. ``format: auto`` selects the reader from
-its filename extension, not its contents: the starter's ``.csv`` file is read
-as CSV. Input also supports Parquet and JSON Lines. Set ``format`` explicitly
-if the extension does not indicate the intended format. ``csv_encoding`` is
-``utf-8`` in the starter.
+* ``path`` — the source table.
+* ``format`` — ``auto`` selects the reader from the filename extension, not
+  its contents (the starter's ``.csv`` is read as CSV). Input also supports
+  Parquet and JSON Lines; set this explicitly if the extension doesn't match
+  the intended format. ``csv_encoding`` is ``utf-8`` in the starter.
+* ``id_column`` — the source column used for stable record IDs. The package
+  also supplies each record's ``record_id`` from this column.
+* ``fields_sent`` — maps a model-facing name (left) to a source column
+  (right). Here, only title and abstract are sent.
+* ``columns_preserved`` — kept for local results (year, investigator, source
+  file) without entering the model prompt.
+* ``required_fields`` — uses the model-facing names from ``fields_sent``; a
+  missing abstract is an error.
 
-``id_column`` names the source column used for stable record IDs. In
-``fields_sent``, the name on the left is visible to the model; the name on the
-right is a source column. Here, only title and abstract are sent. The package
-also supplies each record's ``record_id`` from ``grant_id``. By contrast,
-``columns_preserved`` keeps year, investigator, and source file for local
-results without putting them in the model prompt. ``required_fields`` uses
-the model-facing names on the left of ``fields_sent``; a missing abstract is
-an error. For per-field length limits, see :doc:`advanced`.
+See :doc:`advanced` for per-field length limits.
 
 Task and response schema
 ------------------------
@@ -66,11 +68,14 @@ Task and response schema
      max_input_tokens: 50000
      max_output_tokens: 1200
 
-``rows_per_request`` groups up to three input records in each model request.
-``output_schema`` points to the separate JSON file that defines one result
-row's required fields and allowed labels. The token settings limit request
-size and response length; adjust them for your task and chosen model. See
-:doc:`advanced` for limits and provider-specific schema behavior.
+* ``rows_per_request`` — groups up to three input records in each model
+  request.
+* ``output_schema`` — the separate JSON file defining one result row's
+  required fields and allowed labels.
+* ``max_input_tokens`` / ``max_output_tokens`` — limit request size and
+  response length; adjust for your task and chosen model.
+
+See :doc:`advanced` for limits and provider-specific schema behavior.
 
 Prompts and codebook
 --------------------
@@ -86,15 +91,15 @@ Prompts and codebook
          path: context/codebook.csv
          format: csv
 
-The two prompt files contain the model instructions. The user prompt inserts
-``${records_json}`` for each request and ``${codebook_json}`` for this named
-context file. Context ``format: auto`` also works by filename extension;
-``csv`` states the starter codebook's format explicitly. Keep codebook labels
-aligned with the enums in ``schema.json``.
-
-``prompt.version`` is a version label recorded with the run. Keep ``"1.0"``
-quoted so YAML reads it as a string rather than a number; update the label
-when you intentionally revise the prompt.
+* ``system_file`` / ``user_file`` — the model instructions. The user prompt
+  must insert ``${records_json}`` for each request.
+* ``context.codebook`` — a named context file, inserted as
+  ``${codebook_json}``. ``format: auto`` works by filename extension; ``csv``
+  states it explicitly, as the starter does. Keep codebook labels aligned
+  with the enums in ``schema.json``.
+* ``prompt.version`` — a version label recorded with the run. Keep it quoted
+  (``"1.0"``) so YAML reads it as a string, and update it when you
+  intentionally revise the prompt.
 
 Providers and budget
 --------------------
@@ -110,13 +115,15 @@ Providers and budget
    budget:
      max_estimated_usd: 5.0
 
-Provider entries specify the models available to this project. ``prepare
---provider openai`` or ``prepare --provider anthropic`` chooses one for a run;
-listing providers here does not contact them. Credentials come from
-environment variables, not this file. ``max_estimated_usd`` blocks a run
-whose estimated maximum cost exceeds the configured ceiling. See
-:doc:`installation` for credentials and :doc:`advanced` for provider options,
-pricing overrides, and batch limits.
+* ``providers`` — the models available to this project. ``prepare --provider
+  openai`` or ``prepare --provider anthropic`` chooses one for a run; listing
+  providers here does not contact them. Credentials come from environment
+  variables, not this file.
+* ``budget.max_estimated_usd`` — blocks a run whose estimated maximum cost
+  exceeds this ceiling.
+
+See :doc:`installation` for credentials and :doc:`advanced` for provider
+options, pricing overrides, and batch limits.
 
 Evaluation and output
 ---------------------
@@ -133,22 +140,24 @@ Evaluation and output
      write_csv: true
      runs_directory: runs
 
-``random_seed`` is used for deterministic sampling when ``prepare
---sample-size`` is given without ``--seed``. ``gold_columns`` maps the predicted
-schema field ``primary_label`` to the local source column
-``reference_primary_label``. That column is not in ``fields_sent`` or
-``columns_preserved``, so it does not enter provider prompts or the normalized
-results. Preparation saves the selected reference labels as
-``RUN_ID/input_snapshot/gold_labels.parquet`` and records that relative path
-in the manifest's ``gold_labels_file`` field. After responses are processed,
-``RUN_ID/run_reports/run_summary.json`` reports exact-match accuracy under
-``evaluation_metrics.primary_label``.
+* ``random_seed`` — used for deterministic sampling when ``prepare
+  --sample-size`` is given without ``--seed``.
+* ``gold_columns`` — maps a predicted schema field (``primary_label``) to a
+  local source column (``reference_primary_label``) that stays out of
+  ``fields_sent``/``columns_preserved`` and so never enters provider prompts
+  or normalized results. Preparation saves the selected reference labels to
+  ``RUN_ID/input_snapshot/gold_labels.parquet`` (recorded as
+  ``gold_labels_file`` in the manifest); after processing,
+  ``RUN_ID/run_reports/run_summary.json`` reports exact-match accuracy under
+  ``evaluation_metrics.primary_label``. Validation rejects a mapping to a
+  missing column.
+* ``write_parquet`` / ``write_csv`` — the starter writes both formats under
+  ``runs/``; each prepared run gets its own directory there, separate from
+  the original input data.
 
 The starter labels are illustrative, not externally validated research ground
-truth. When replacing the input, provide your own reviewed reference column or
-remove ``gold_columns``; validation rejects a mapping to a missing column.
-The starter writes both Parquet and CSV results under ``runs/``. Each prepared
-run gets its own directory there; the original input data remains separate.
+truth. When replacing the input, provide your own reviewed reference column
+or remove ``gold_columns``.
 
 Once these settings look right, return to the :doc:`basic` workflow to
 validate, prepare, and inspect a pilot. For retries, comparisons, and recovery,
