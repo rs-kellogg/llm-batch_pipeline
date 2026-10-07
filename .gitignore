@@ -11,3 +11,4 @@ runs/
 examples/*/runs/
 docs/_build/
 key*.txt
+other_resources/
