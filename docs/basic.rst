@@ -107,7 +107,7 @@ Select a deterministic sample and prepare it for synchronous execution:
        --sample-size 4 --seed 42
 
 ``prepare`` is local and free. It prints a run directory; use that complete
-path as ``RUN_ID`` below. Start with ``RUN_ID/REVIEW.md``, then inspect:
+path as ``RUN_DIR`` below. Start with ``RUN_DIR/REVIEW.md``, then inspect:
 
 * ``api_requests/segment_*.jsonl`` for the exact provider-native payloads and
   fully rendered prompts;
@@ -126,7 +126,7 @@ the reviewed run:
 
 .. code-block:: console
 
-   $ kllm-batch submit RUN_ID
+   $ kllm-batch submit RUN_DIR
 
 ``submit`` displays the request count and estimated maximum cost before asking
 for confirmation. A selected pilot defaults to synchronous execution, so the
@@ -151,18 +151,18 @@ carefully as the pilot, then submit it:
 
 .. code-block:: console
 
-   $ kllm-batch submit RUN_ID
+   $ kllm-batch submit RUN_DIR
 
 6. Wait for and process the batch
 ---------------------------------
 
 .. code-block:: console
 
-   $ kllm-batch sync RUN_ID --watch
+   $ kllm-batch sync RUN_DIR --watch
 
 ``sync --watch`` polls the provider, downloads completed responses, validates
 and normalizes result rows, writes outputs, and runs the completeness audit.
-It is safe to rerun after an interruption. ``status RUN_ID`` is available for
+It is safe to rerun after an interruption. ``status RUN_DIR`` is available for
 a one-time progress check, but is unnecessary while ``sync --watch`` is
 running.
 

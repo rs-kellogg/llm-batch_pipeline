@@ -44,9 +44,9 @@ file-input workflow, attach files to a selected pilot *before* submitting it:
 
    $ kllm-batch validate -c my-project/project.yaml
    $ kllm-batch prepare -c my-project/project.yaml --provider openai --sample-size 2
-   $ kllm-batch attach-files PILOT_RUN_ID --column attachment_file \
+   $ kllm-batch attach-files PILOT_RUN_DIR --column attachment_file \
        --files-dir data/attachments --acknowledge-unestimated-cost
-   $ kllm-batch submit PILOT_RUN_ID
+   $ kllm-batch submit PILOT_RUN_DIR
 
 A relative ``--files-dir`` is resolved against the directory containing
 ``project.yaml``, not the current directory; use an absolute path if unsure.
@@ -72,7 +72,7 @@ prepared requests. Filenames must resolve inside ``--files-dir``; missing,
 unsupported, or oversized files are rejected locally. Only PNG and PDF are
 supported in this first version.
 
-If an attached run has failures, ``kllm-batch retry RUN_ID`` prepares a child
+If an attached run has failures, ``kllm-batch retry RUN_DIR`` prepares a child
 run but does not attach files automatically. Run ``attach-files`` on the child
 with the same column and directory before submitting it. Submission refuses a
 retry child until the required files are attached, and the files must match

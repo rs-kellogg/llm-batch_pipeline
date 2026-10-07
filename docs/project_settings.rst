@@ -161,11 +161,11 @@ Evaluation and output
   local source column (``reference_primary_label``) that stays out of
   ``fields_sent``/``columns_preserved`` and so never enters provider prompts
   or normalized results. Preparation saves the selected reference labels to
-  ``RUN_ID/input_snapshot/gold_labels.parquet`` (recorded as
+  ``RUN_DIR/input_snapshot/gold_labels.parquet`` (recorded as
   ``gold_labels_file`` in the manifest); after processing,
-  ``RUN_ID/run_reports/run_summary.json`` reports exact-match accuracy under
+  ``RUN_DIR/run_reports/run_summary.json`` reports exact-match accuracy under
   ``evaluation_metrics.primary_label``. Validation rejects a mapping to a
-  missing column. (``RUN_ID`` is the run directory that ``prepare`` prints —
+  missing column. (``RUN_DIR`` is the run directory that ``prepare`` prints —
   see :doc:`basic`.)
 * ``write_parquet`` / ``write_csv`` — whether to write results in each
   format; the starter writes both.

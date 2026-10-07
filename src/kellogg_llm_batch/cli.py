@@ -197,7 +197,7 @@ def submit_command(
 ):
     """Execute an inspected run using its recorded sync or batch mode.
 
-    Example: `kllm-batch submit RUN_ID`; use `--yes` only in reviewed
+    Example: `kllm-batch submit RUN_DIR`; use `--yes` only in reviewed
     automation. Requires the provider API key and can incur cost. Synchronous
     runs process immediately; batch runs continue through status and sync.
     """
@@ -305,7 +305,7 @@ def submit_command(
         if mode == "sync" and state["status"] == "completed_with_failures":
             console.print(
                 "[yellow]API/request failures were recorded and were not rerun automatically.[/yellow] "
-                "Inspect outputs/failures.jsonl, then use `kllm-batch retry RUN_ID` to prepare a retry."
+                "Inspect outputs/failures.jsonl, then use `kllm-batch retry RUN_DIR` to prepare a retry."
             )
     except typer.Abort:
         console.print("Submission cancelled.")
@@ -346,7 +346,7 @@ def attach_files_command(
 def status_command(run: Path = typer.Argument(..., help="Run directory.")):
     """Refresh remote status for a submitted or running run.
 
-    Example: `kllm-batch status RUN_ID`. Requires the provider API key but does
+    Example: `kllm-batch status RUN_DIR`. Requires the provider API key but does
     not submit new work. If a prior command was interrupted, inspect the local
     state and rerun this command before `sync`.
     """
@@ -376,7 +376,7 @@ def sync_command(
 ):
     """Download, normalize, validate, and audit completed segments.
 
-    Example: `kllm-batch sync RUN_ID --watch`; polling defaults to 60 seconds.
+    Example: `kllm-batch sync RUN_DIR --watch`; polling defaults to 60 seconds.
     Requires the provider API key and accepts submitted/running runs. It is
     idempotent: rerun after an interruption to resume from saved state.
     """
@@ -405,7 +405,7 @@ def sync_command(
 def cancel_command(run: Path = typer.Argument(..., help="Run directory.")):
     """Cancel submitted or running remote jobs without deleting artifacts.
 
-    Example: `kllm-batch cancel RUN_ID`. Requires the provider API key. Work
+    Example: `kllm-batch cancel RUN_DIR`. Requires the provider API key. Work
     already processed by the provider may still be billable; run `sync` later
     if partial results become available.
     """
@@ -419,7 +419,7 @@ def cancel_command(run: Path = typer.Argument(..., help="Run directory.")):
 def audit_command(run: Path = typer.Argument(..., help="Run directory.")):
     """Audit completeness, failures, and result identifiers locally.
 
-    Example: `kllm-batch audit RUN_ID`. This is local and free, normally used
+    Example: `kllm-batch audit RUN_DIR`. This is local and free, normally used
     after `sync`; an early audit reports missing rows without altering raw data.
     Correct provider-output problems with a linked `retry`, not manual edits.
     """
@@ -433,7 +433,7 @@ def audit_command(run: Path = typer.Argument(..., help="Run directory.")):
 def retry_command(run: Path = typer.Argument(..., help="Parent run directory.")):
     """Prepare a linked child run containing only retryable failed rows.
 
-    Example: `kllm-batch retry RUN_ID`. This local command requires processed
+    Example: `kllm-batch retry RUN_DIR`. This local command requires processed
     failure output, verifies the original source checksum, recalculates cost,
     and never submits automatically. Review and submit the returned child run.
     """
@@ -453,7 +453,7 @@ def retry_command(run: Path = typer.Argument(..., help="Parent run directory."))
 def merge_command(run: Path = typer.Argument(..., help="Latest run in an attempt chain.")):
     """Merge valid parent/retry results, preferring the newest attempt.
 
-    Example: `kllm-batch merge CHILD_RUN_ID`. This is local and free and needs
+    Example: `kllm-batch merge CHILD_RUN_DIR`. This is local and free and needs
     processed result files. Missing rows remain missing and are visible in the
     audit; source or raw result files are never modified.
     """
@@ -470,7 +470,7 @@ def compare_command(
 ):
     """Compare two processed runs and export rows needing human review.
 
-    Example: `kllm-batch compare OPENAI_RUN_ID ANTHROPIC_RUN_ID`. This is local
+    Example: `kllm-batch compare OPENAI_RUN_DIR ANTHROPIC_RUN_DIR`. This is local
     and free. Runs are joined by record ID, never row order; missing records and
     categorical disagreements are retained in the comparison report.
     """

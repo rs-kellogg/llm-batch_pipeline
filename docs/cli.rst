@@ -32,35 +32,35 @@ recovery guidance.
      - Local
      - Select records and create an immutable, costed run for inspection.
    * - ``attach-files``
-     - ``kllm-batch attach-files RUN_ID --column NAME --files-dir DIR --acknowledge-unestimated-cost``
+     - ``kllm-batch attach-files RUN_DIR --column NAME --files-dir DIR --acknowledge-unestimated-cost``
      - Local
      - Add one PNG/PDF per request to an unsubmitted run. See :doc:`file_attachments`.
    * - ``submit``
-     - ``kllm-batch submit RUN_ID [--yes]``
+     - ``kllm-batch submit RUN_DIR [--yes]``
      - Provider / paid
      - Execute the exact prepared requests using their recorded execution mode.
    * - ``status``
-     - ``kllm-batch status RUN_ID``
+     - ``kllm-batch status RUN_DIR``
      - Provider
      - Refresh a batch run's remote state once.
    * - ``sync``
-     - ``kllm-batch sync RUN_ID [--watch] [--poll-seconds N]``
+     - ``kllm-batch sync RUN_DIR [--watch] [--poll-seconds N]``
      - Provider
      - Retrieve batch responses, normalize results, and audit completeness.
    * - ``cancel``
-     - ``kllm-batch cancel RUN_ID``
+     - ``kllm-batch cancel RUN_DIR``
      - Provider
      - Request cancellation without deleting local artifacts.
    * - ``audit``
-     - ``kllm-batch audit RUN_ID``
+     - ``kllm-batch audit RUN_DIR``
      - Local
      - Recompute completeness, failures, and result-identifier checks.
    * - ``retry``
-     - ``kllm-batch retry RUN_ID``
+     - ``kllm-batch retry RUN_DIR``
      - Local
      - Prepare a linked child run for retryable failed rows.
    * - ``merge``
-     - ``kllm-batch merge CHILD_RUN_ID``
+     - ``kllm-batch merge CHILD_RUN_DIR``
      - Local
      - Merge valid attempt-chain results, preferring the newest attempt.
    * - ``compare``

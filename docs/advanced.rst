@@ -29,7 +29,7 @@ run and its raw responses remain unchanged.
 
    .. code-block:: console
 
-      $ kllm-batch retry RUN_ID
+      $ kllm-batch retry RUN_DIR
 
 #. Review the child run's ``REVIEW.md``, payloads, and cost estimate, then run
    it through its recorded execution mode. If the parent had attached files,
@@ -38,25 +38,25 @@ run and its raw responses remain unchanged.
 
    .. code-block:: console
 
-      $ kllm-batch submit CHILD_RUN_ID
-      $ kllm-batch sync CHILD_RUN_ID --watch  # batch children only
+      $ kllm-batch submit CHILD_RUN_DIR
+      $ kllm-batch sync CHILD_RUN_DIR --watch  # batch children only
 
 #. Combine successful parent and child results, preferring the newest valid
    attempt for each record:
 
    .. code-block:: console
 
-      $ kllm-batch merge CHILD_RUN_ID
+      $ kllm-batch merge CHILD_RUN_DIR
 
 ``retry`` and ``merge`` are local and free; ``retry`` never submits
-automatically. ``merge CHILD_RUN_ID`` walks backward through that child's full
+automatically. ``merge CHILD_RUN_DIR`` walks backward through that child's full
 parent chain, concatenates each run's normalized results from oldest to newest,
 and keeps the newest valid result when the same ``record_id`` appears more than
 once. It then sorts the combined rows by ``record_id``.
 
 The new files are written only inside the supplied child run as
-``CHILD_RUN_ID/outputs/merged.parquet`` and
-``CHILD_RUN_ID/outputs/merged.csv``. The command does not modify or copy files
+``CHILD_RUN_DIR/outputs/merged.parquet`` and
+``CHILD_RUN_DIR/outputs/merged.csv``. The command does not modify or copy files
 into a parent run, and it does not replace any run's existing
 ``results.parquet`` or ``results.csv``. Raw responses and source files are also
 left unchanged. Missing rows remain missing rather than being silently filled.
@@ -83,12 +83,12 @@ successes:
 
 .. code-block:: console
 
-   $ kllm-batch cancel RUN_ID
-   $ kllm-batch sync RUN_ID --watch
-   $ kllm-batch retry RUN_ID
-   $ kllm-batch submit CHILD_RUN_ID
-   $ kllm-batch sync CHILD_RUN_ID --watch  # batch children only
-   $ kllm-batch merge CHILD_RUN_ID
+   $ kllm-batch cancel RUN_DIR
+   $ kllm-batch sync RUN_DIR --watch
+   $ kllm-batch retry RUN_DIR
+   $ kllm-batch submit CHILD_RUN_DIR
+   $ kllm-batch sync CHILD_RUN_DIR --watch  # batch children only
+   $ kllm-batch merge CHILD_RUN_DIR
 
 Do not run ``submit`` again on the canceled parent: the remote batch itself is
 not resumable. ``retry`` recognizes the cancellation categories returned by
@@ -100,10 +100,10 @@ subset.
 Other recovery commands
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-* ``status RUN_ID`` refreshes a batch run's remote status once.
-* ``cancel RUN_ID`` requests cancellation without deleting local artifacts;
+* ``status RUN_DIR`` refreshes a batch run's remote status once.
+* ``cancel RUN_DIR`` requests cancellation without deleting local artifacts;
   completed provider work may still be billable.
-* ``audit RUN_ID`` recomputes local completeness and identifier checks. Normal
+* ``audit RUN_DIR`` recomputes local completeness and identifier checks. Normal
   ``submit``/``sync`` processing already runs this audit.
 * After an interrupted batch operation, rerun ``status`` and then ``sync``.
   Saved remote IDs prevent duplicate submission of recorded segments.
@@ -179,7 +179,7 @@ Review, submit, and process both runs. Then compare them:
 
 .. code-block:: console
 
-   $ kllm-batch compare OPENAI_RUN_ID ANTHROPIC_RUN_ID
+   $ kllm-batch compare OPENAI_RUN_DIR ANTHROPIC_RUN_DIR
 
 Runs are joined by ``record_id``, never row order. For fields defined with
 ``enum`` in the first run's schema, the comparison reports the number compared,

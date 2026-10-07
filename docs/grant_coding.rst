@@ -102,21 +102,21 @@ Prepare a deterministic sample with OpenAI:
        --seed 42
 
 See :doc:`basic` for what ``prepare`` does. The command prints a new directory
-under ``examples/grant_coding/runs/``; use that complete path as ``RUN_ID`` in
+under ``examples/grant_coding/runs/``; use that complete path as ``RUN_DIR`` in
 later commands. Because this is a selected pilot, it defaults to synchronous
 execution.
 
 3. Inspect before submitting
 ----------------------------
 
-Open ``RUN_ID/REVIEW.md`` first. Confirm:
+Open ``RUN_DIR/REVIEW.md`` first. Confirm:
 
 * four of ten rows were selected with seed 42;
 * the provider, model, and synchronous execution mode are correct;
 * the request count and estimated maximum cost are reasonable; and
 * the displayed next command points to this run.
 
-Then inspect ``RUN_ID/api_requests/segment_*.jsonl``. These files contain the
+Then inspect ``RUN_DIR/api_requests/segment_*.jsonl``. These files contain the
 exact saved payloads, including the rendered system instructions, codebook,
 and grant records. If anything is wrong, edit the source project and prepare a
 new run—do not edit generated payloads.
@@ -139,7 +139,7 @@ Submit the exact requests you reviewed:
 
 .. code-block:: console
 
-   $ kllm-batch submit RUN_ID
+   $ kllm-batch submit RUN_DIR
 
 See :doc:`basic` for what ``submit`` does for a synchronous pilot; it does not
 require a separate ``status`` or ``sync`` command here.
@@ -158,21 +158,21 @@ After a successful pilot, inspect:
 
    * - Path
      - Contents
-   * - ``RUN_ID/outputs/results.csv``
+   * - ``RUN_DIR/outputs/results.csv``
      - Human-readable predictions, preserved metadata, and row provenance.
-   * - ``RUN_ID/outputs/results.parquet``
+   * - ``RUN_DIR/outputs/results.parquet``
      - The same results in a type-stable format for analysis.
-   * - ``RUN_ID/run_reports/audit.json``
+   * - ``RUN_DIR/run_reports/audit.json``
      - Expected, valid, missing, unexpected, and duplicate record counts.
-   * - ``RUN_ID/run_reports/run_summary.json``
+   * - ``RUN_DIR/run_reports/run_summary.json``
      - ``evaluation_metrics.primary_label`` gives exact-match accuracy against
        the selected reference labels.
-   * - ``RUN_ID/input_snapshot/gold_labels.parquet``
+   * - ``RUN_DIR/input_snapshot/gold_labels.parquet``
      - Local reference labels selected for this run; its relative path is
        recorded as ``gold_labels_file`` in ``manifest.json``.
-   * - ``RUN_ID/run_reports/usage.json``
+   * - ``RUN_DIR/run_reports/usage.json``
      - Request-level and total token usage.
-   * - ``RUN_ID/outputs/failures.jsonl``
+   * - ``RUN_DIR/outputs/failures.jsonl``
      - Created only if a request or result failed validation.
 
 Check that each selected grant has one valid result, the label and
@@ -193,8 +193,8 @@ grants. A complete run defaults to batch execution:
    $ kllm-batch prepare \
        -c examples/grant_coding/project.yaml \
        --provider openai
-   $ kllm-batch submit RUN_ID
-   $ kllm-batch sync RUN_ID --watch
+   $ kllm-batch submit RUN_DIR
+   $ kllm-batch sync RUN_DIR --watch
 
 Use the new run directory printed by the second ``prepare`` command; do not
 reuse the pilot's path. Review the complete run before submitting it, just as
