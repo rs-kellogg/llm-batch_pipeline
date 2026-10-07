@@ -118,6 +118,11 @@ Other recovery commands
   ``state.previous.json``. Preserve both when seeking support.
 * Remove a run's ``.run.lock`` only after verifying that no other local command
   is operating on that run.
+* If ``prepare`` fails or is interrupted, it removes its own incomplete
+  ``.RUN_ID.building`` directory automatically; nothing inside was ever
+  submitted to a provider. If one is still found (for example, left over from
+  an abrupt kill), the next ``prepare`` prints its path as a warning — it is
+  safe to delete.
 
 Intentionally rerun or select specific records
 ------------------------------------------------

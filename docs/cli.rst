@@ -75,7 +75,10 @@ Prepare options used most often
    Select a deterministic random sample instead of all rows.
 
 ``--seed S``
-   Set the sample seed. Without it, the configured evaluation seed is used.
+   Controls which rows ``--sample-size`` randomly selects, so the same seed
+   reproduces the same pilot; it does not affect row order or a full run,
+   which has no random selection step. Only valid together with
+   ``--sample-size``; without it, the configured evaluation seed is used.
 
 ``--ids-file PATH``
    Select IDs from a UTF-8 file with one source record ID per line and no
