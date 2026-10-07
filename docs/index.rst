@@ -1,7 +1,7 @@
 Kellogg LLM Batch
 =================
 
-Reliable, reviewable LLM batch pipelines for research coding and structured
+Reviewable LLM batch pipelines for research coding and structured
 extraction.
 
 ``kllm-batch`` turns tabular research data into provider-ready requests for
@@ -44,6 +44,7 @@ What the package protects
 .. toctree::
    :maxdepth: 2
    :caption: User guide
+   :hidden:
 
    installation
    basic

@@ -1,8 +1,8 @@
 # Kellogg LLM Batch
 
-`kellogg-llm-batch` provides the `kllm-batch` command for reliable,
-reproducible classification and structured extraction with the OpenAI and
-Anthropic batch APIs.
+`kellogg-llm-batch` provides the `kllm-batch` command for reproducible
+classification and structured extraction with the OpenAI and Anthropic batch
+APIs.
 
 **[Read the complete documentation](https://rs-kellogg.github.io/llm-batch_pipeline/)**
 
