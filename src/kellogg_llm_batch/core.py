@@ -146,6 +146,18 @@ def _select_ids(
     return None, {"method": "all"}, purpose
 
 
+def find_incomplete_runs(config_or_path: ProjectConfig | str | Path) -> list[Path]:
+    """Return leftover `.<run_id>.building` directories from a prior `prepare`
+    that failed or was interrupted before completion. Each one is safe to
+    delete: nothing inside it was ever submitted to a provider, and it can be
+    reproduced by running `prepare` again."""
+    config = config_or_path if isinstance(config_or_path, ProjectConfig) else load_config(config_or_path)
+    runs_root = config.resolve(config.output.runs_directory)
+    if not runs_root.exists():
+        return []
+    return sorted(path for path in runs_root.glob(".*.building") if path.is_dir())
+
+
 def prepare_run(
     config_or_path: ProjectConfig | str | Path,
     provider: str,
@@ -191,106 +203,110 @@ def prepare_run(
     runs_root = config.resolve(config.output.runs_directory)
     final_run_dir = runs_root / run_id
     run_dir = runs_root / f".{run_id}.building"
-    for name in ("api_requests", "input_snapshot", "project_snapshot"):
-        (run_dir / name).mkdir(parents=True, exist_ok=False if name == "api_requests" else True)
+    try:
+        for name in ("api_requests", "input_snapshot", "project_snapshot"):
+            (run_dir / name).mkdir(parents=True, exist_ok=False if name == "api_requests" else True)
 
-    canonical_rows = []
-    for record in records:
-        source_row_sha256 = sha256_text(
-            json.dumps(
-                {"record_id": record.record_id, "sent": record.sent, "preserved": record.preserved},
-                ensure_ascii=False,
-                sort_keys=True,
-            )
-        )
-        canonical_rows.append({"record_id": record.record_id, "source_row": record.source_row, **record.sent, **record.preserved, "_kllm_source_row_sha256": source_row_sha256, "_kllm_truncated_fields": json.dumps(record.truncated_fields, sort_keys=True)})
-    canonical_df = pd.DataFrame(canonical_rows)
-    canonical_df.to_parquet(run_dir / "input_snapshot" / "canonical_input.parquet", index=False)
-
-    gold_labels_path = None
-    if config.evaluation.gold_columns:
-        source_frame, _, _ = load_source(config)
-        gold_rows = []
+        canonical_rows = []
         for record in records:
-            row = {"record_id": record.record_id}
-            row.update({output_field: source_frame.iloc[record.source_row][source_column] for output_field, source_column in config.evaluation.gold_columns.items()})
-            gold_rows.append(row)
-        gold_labels_path = run_dir / "input_snapshot" / "gold_labels.parquet"
-        pd.DataFrame(gold_rows).to_parquet(gold_labels_path, index=False)
+            source_row_sha256 = sha256_text(
+                json.dumps(
+                    {"record_id": record.record_id, "sent": record.sent, "preserved": record.preserved},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            canonical_rows.append({"record_id": record.record_id, "source_row": record.source_row, **record.sent, **record.preserved, "_kllm_source_row_sha256": source_row_sha256, "_kllm_truncated_fields": json.dumps(record.truncated_fields, sort_keys=True)})
+        canonical_df = pd.DataFrame(canonical_rows)
+        canonical_df.to_parquet(run_dir / "input_snapshot" / "canonical_input.parquet", index=False)
 
-    canonical_by_id = {item.custom_id: item for item in canonical}
-    state_segments = []
-    mapping_rows: list[dict[str, Any]] = []
-    for index, segment in enumerate(segments):
-        request_path = run_dir / "api_requests" / f"segment_{index:04d}.jsonl"
-        request_path.write_bytes(b"".join(_json_line(item) for item in segment))
-        for item in segment:
-            request = canonical_by_id[item["custom_id"]]
-            mapping_rows.append({"segment_index": index, "custom_id": request.custom_id, "record_ids": request.record_ids})
-        state_segments.append({"index": index, "request_file": str(request_path.relative_to(run_dir)), "mapping_file": "input_snapshot/request_map.jsonl", "status": "prepared", "remote_batch_id": None, "input_file_id": None, "provider_status": None, "error": None})
-    with (run_dir / "input_snapshot" / "request_map.jsonl").open("w", encoding="utf-8") as handle:
-        for item in mapping_rows:
-            handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+        gold_labels_path = None
+        if config.evaluation.gold_columns:
+            source_frame, _, _ = load_source(config)
+            gold_rows = []
+            for record in records:
+                row = {"record_id": record.record_id}
+                row.update({output_field: source_frame.iloc[record.source_row][source_column] for output_field, source_column in config.evaluation.gold_columns.items()})
+                gold_rows.append(row)
+            gold_labels_path = run_dir / "input_snapshot" / "gold_labels.parquet"
+            pd.DataFrame(gold_rows).to_parquet(gold_labels_path, index=False)
 
-    system_prompt, user_template = load_prompt_files(config)
-    shutil.copy2(config.resolve(config.prompt.system_file), run_dir / "project_snapshot" / "system.txt")
-    shutil.copy2(config.resolve(config.prompt.user_file), run_dir / "project_snapshot" / "user.txt")
-    shutil.copy2(config.resolve(config.task.output_schema), run_dir / "project_snapshot" / "schema.json")
-    shutil.copy2(config.config_path, run_dir / "project_snapshot" / "project.yaml")
-    context_manifest = {}
-    if config.prompt.context:
-        (run_dir / "project_snapshot" / "context").mkdir()
-    for name, item in config.prompt.context.items():
-        source_context = config.resolve(item.path)
-        destination = run_dir / "project_snapshot" / "context" / f"{name}{source_context.suffix}"
-        shutil.copy2(source_context, destination)
-        context_manifest[name] = {"source_path": str(source_context), "snapshot_path": str(destination.relative_to(run_dir)), "sha256": sha256_file(source_context)}
-    prepared_artifacts = {
-        str(path.relative_to(run_dir)): sha256_file(path)
-        for directory in (run_dir / "api_requests", run_dir / "input_snapshot", run_dir / "project_snapshot")
-        for path in sorted(directory.rglob("*"))
-        if path.is_file()
-    }
-    manifest = {
-        "layout_version": 2,
-        "run_id": run_id,
-        "created_at": utc_now(),
-        "project": config.project.name,
-        "provider": provider,
-        "model_requested": settings.model,
-        "config_path": str(config.config_path),
-        "source_path": str(source),
-        "source_sha256": sha256_file(source),
-        "config_sha256": sha256_file(config.config_path),
-        "source_rows": len(canonical_df),
-        "source_total_rows": validation["source_rows"],
-        "selected_rows": len(canonical_df),
-        "request_count": len(payloads),
-        "segment_count": len(segments),
-        "prompt_version": config.prompt.version,
-        "system_prompt_sha256": sha256_text(system_prompt),
-        "user_prompt_sha256": sha256_text(user_template),
-        "schema_sha256": sha256_text(json.dumps(schema, sort_keys=True)),
-        "package_version": __version__,
-        "python_version": platform.python_version(),
-        "package_versions": _package_versions(),
-        "git_commit": _git_commit(config.base_dir),
-        "provider_options": settings.options,
-        "purpose": purpose,
-        "execution": execution,
-        "selection": selection,
-        "gold_columns": config.evaluation.gold_columns,
-        "gold_labels_file": str(gold_labels_path.relative_to(run_dir)) if gold_labels_path else None,
-        "parent_run": parent_run,
-        "cost_estimate": estimate.model_dump(),
-        "output_options": config.output.model_dump(mode="json"),
-        "context": context_manifest,
-        "prepared_artifact_sha256": prepared_artifacts,
-    }
-    atomic_write_json(run_dir / "manifest.json", manifest)
-    _write_review(run_dir, manifest, records)
-    save_state(run_dir, {"run_id": run_id, "stage": "prepared", "status": "prepared", "created_at": manifest["created_at"], "segments": state_segments})
-    os.replace(run_dir, final_run_dir)
+        canonical_by_id = {item.custom_id: item for item in canonical}
+        state_segments = []
+        mapping_rows: list[dict[str, Any]] = []
+        for index, segment in enumerate(segments):
+            request_path = run_dir / "api_requests" / f"segment_{index:04d}.jsonl"
+            request_path.write_bytes(b"".join(_json_line(item) for item in segment))
+            for item in segment:
+                request = canonical_by_id[item["custom_id"]]
+                mapping_rows.append({"segment_index": index, "custom_id": request.custom_id, "record_ids": request.record_ids})
+            state_segments.append({"index": index, "request_file": str(request_path.relative_to(run_dir)), "mapping_file": "input_snapshot/request_map.jsonl", "status": "prepared", "remote_batch_id": None, "input_file_id": None, "provider_status": None, "error": None})
+        with (run_dir / "input_snapshot" / "request_map.jsonl").open("w", encoding="utf-8") as handle:
+            for item in mapping_rows:
+                handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+        system_prompt, user_template = load_prompt_files(config)
+        shutil.copy2(config.resolve(config.prompt.system_file), run_dir / "project_snapshot" / "system.txt")
+        shutil.copy2(config.resolve(config.prompt.user_file), run_dir / "project_snapshot" / "user.txt")
+        shutil.copy2(config.resolve(config.task.output_schema), run_dir / "project_snapshot" / "schema.json")
+        shutil.copy2(config.config_path, run_dir / "project_snapshot" / "project.yaml")
+        context_manifest = {}
+        if config.prompt.context:
+            (run_dir / "project_snapshot" / "context").mkdir()
+        for name, item in config.prompt.context.items():
+            source_context = config.resolve(item.path)
+            destination = run_dir / "project_snapshot" / "context" / f"{name}{source_context.suffix}"
+            shutil.copy2(source_context, destination)
+            context_manifest[name] = {"source_path": str(source_context), "snapshot_path": str(destination.relative_to(run_dir)), "sha256": sha256_file(source_context)}
+        prepared_artifacts = {
+            str(path.relative_to(run_dir)): sha256_file(path)
+            for directory in (run_dir / "api_requests", run_dir / "input_snapshot", run_dir / "project_snapshot")
+            for path in sorted(directory.rglob("*"))
+            if path.is_file()
+        }
+        manifest = {
+            "layout_version": 2,
+            "run_id": run_id,
+            "created_at": utc_now(),
+            "project": config.project.name,
+            "provider": provider,
+            "model_requested": settings.model,
+            "config_path": str(config.config_path),
+            "source_path": str(source),
+            "source_sha256": sha256_file(source),
+            "config_sha256": sha256_file(config.config_path),
+            "source_rows": len(canonical_df),
+            "source_total_rows": validation["source_rows"],
+            "selected_rows": len(canonical_df),
+            "request_count": len(payloads),
+            "segment_count": len(segments),
+            "prompt_version": config.prompt.version,
+            "system_prompt_sha256": sha256_text(system_prompt),
+            "user_prompt_sha256": sha256_text(user_template),
+            "schema_sha256": sha256_text(json.dumps(schema, sort_keys=True)),
+            "package_version": __version__,
+            "python_version": platform.python_version(),
+            "package_versions": _package_versions(),
+            "git_commit": _git_commit(config.base_dir),
+            "provider_options": settings.options,
+            "purpose": purpose,
+            "execution": execution,
+            "selection": selection,
+            "gold_columns": config.evaluation.gold_columns,
+            "gold_labels_file": str(gold_labels_path.relative_to(run_dir)) if gold_labels_path else None,
+            "parent_run": parent_run,
+            "cost_estimate": estimate.model_dump(),
+            "output_options": config.output.model_dump(mode="json"),
+            "context": context_manifest,
+            "prepared_artifact_sha256": prepared_artifacts,
+        }
+        atomic_write_json(run_dir / "manifest.json", manifest)
+        _write_review(run_dir, manifest, records)
+        save_state(run_dir, {"run_id": run_id, "stage": "prepared", "status": "prepared", "created_at": manifest["created_at"], "segments": state_segments})
+        os.replace(run_dir, final_run_dir)
+    except BaseException:
+        shutil.rmtree(run_dir, ignore_errors=True)
+        raise
     return final_run_dir
 
 

@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .attachments import attach_files_to_run
-from .core import audit_run, cancel_run, compare_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, sync_checkpoint_progress, sync_run
+from .core import audit_run, cancel_run, compare_runs, find_incomplete_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, sync_checkpoint_progress, sync_run
 from .scaffold import scaffold_project
 from .state import load_state, resolve_run
 from .validation import ProjectValidationError, validate_project
@@ -171,6 +171,12 @@ def prepare_command(
     provider JSONL—including its rendered prompts—before submitting.
     """
     try:
+        stale_runs = find_incomplete_runs(config)
+        if stale_runs:
+            noun = "directory" if len(stale_runs) == 1 else "directories"
+            console.print(f"[yellow]Warning:[/yellow] found {len(stale_runs)} incomplete run {noun} from an earlier `prepare` that failed or was interrupted. Nothing inside was submitted to a provider; it is safe to delete and re-run `prepare`:")
+            for stale_run in stale_runs:
+                console.print(f"  {stale_run}")
         run_dir = prepare_run(
             config,
             provider,
