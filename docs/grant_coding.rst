@@ -56,13 +56,13 @@ The relevant input mapping in ``project.yaml`` is:
        - investigator
        - source_file
 
-Only ``record_id``, ``project_title``, and ``abstract`` enter the model prompt.
-The three preserved columns are joined back into results locally. With
+Only ``record_id``, ``project_title``, and ``abstract`` enter the model
+prompt; the preserved columns are joined back into results locally. With
 ``rows_per_request: 3``, the complete ten-row example produces four requests.
+See :doc:`project_settings` for what each field controls.
 
 The source column ``reference_primary_label`` is deliberately neither sent
-nor preserved in results. This configuration compares predictions with those
-labels locally:
+nor preserved in results. Instead it drives local evaluation:
 
 .. code-block:: yaml
 
@@ -71,8 +71,9 @@ labels locally:
      gold_columns:
        primary_label: reference_primary_label
 
-The ten reference labels are teaching examples based on the codebook, not an
-externally validated benchmark. Replace them with your own reviewed labels
+See :doc:`project_settings` for how ``gold_columns`` scoring works. The ten
+reference labels here are teaching examples based on the codebook, not an
+externally validated benchmark — replace them with your own reviewed labels
 before using agreement as research evidence.
 
 1. Validate the project
@@ -84,9 +85,8 @@ Run the local validation before creating a run:
 
    $ kllm-batch validate -c examples/grant_coding/project.yaml
 
-Validation checks the data, duplicate IDs and content, required abstracts,
-prompt placeholders, output schema, request sizes, and estimated cost. This
-step is local, requires no API key, and creates no run artifacts.
+See :doc:`basic` for what validation checks. This step is local, requires no
+API key, and creates no run artifacts.
 
 2. Prepare a four-grant pilot
 -----------------------------
@@ -101,9 +101,9 @@ Prepare a deterministic sample with OpenAI:
        --sample-size 4 \
        --seed 42
 
-Preparation is also local and free. The command prints a new directory under
-``examples/grant_coding/runs/``. Use that complete path as ``RUN_ID`` in later
-commands. Because this is a selected pilot, it defaults to synchronous
+See :doc:`basic` for what ``prepare`` does. The command prints a new directory
+under ``examples/grant_coding/runs/``; use that complete path as ``RUN_ID`` in
+later commands. Because this is a selected pilot, it defaults to synchronous
 execution.
 
 3. Inspect before submitting
@@ -141,10 +141,8 @@ Submit the exact requests you reviewed:
 
    $ kllm-batch submit RUN_ID
 
-The command shows the estimated maximum cost and asks for confirmation. A
-synchronous pilot waits for its responses, normalizes and validates the rows,
-and runs the completeness audit automatically. It does not require a separate
-``status`` or ``sync`` command.
+See :doc:`basic` for what ``submit`` does for a synchronous pilot; it does not
+require a separate ``status`` or ``sync`` command here.
 
 To use Anthropic instead, prepare a separate pilot with
 ``--provider anthropic``, set ``ANTHROPIC_API_KEY``, and submit that new run.

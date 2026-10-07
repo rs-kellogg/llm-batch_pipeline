@@ -5,8 +5,8 @@ Advanced workflows
 
 Most researchers come here for one of two reasons: a completed run has failed
 records to retry, or two completed runs need to be compared. Start with the
-relevant workflow below; configuration, recovery, and provenance details
-follow afterward.
+relevant workflow below; recovery, selection, comparison, configuration, and
+provenance details follow afterward.
 
 For an optional, separate PNG/PDF input step after preparation, see
 :doc:`file_attachments`.
@@ -65,151 +65,7 @@ If a child run also has retryable failures, run ``retry`` on that child and
 later run ``merge`` on the newest descendant. The attempt chain preserves the
 history while the merge walks back through every parent.
 
-Compare providers or repeated runs
-----------------------------------
-
-``compare`` is useful for assessing robustness across providers, models,
-prompt versions, or repeated runs. For the clearest interpretation, use the
-same selected record IDs and the same output schema in both processed runs.
-
-For example, prepare the same deterministic pilot for both providers:
-
-.. code-block:: console
-
-   $ kllm-batch prepare -c my-project/project.yaml --provider openai \
-       --sample-size 100 --seed 42
-   $ kllm-batch prepare -c my-project/project.yaml --provider anthropic \
-       --sample-size 100 --seed 42
-
-Review, submit, and process both runs. Then compare them:
-
-.. code-block:: console
-
-   $ kllm-batch compare OPENAI_RUN_ID ANTHROPIC_RUN_ID
-
-Runs are joined by ``record_id``, never row order. For fields defined with
-``enum`` in the first run's schema, the comparison reports the number compared,
-percent agreement, and Cohen's kappa. It also counts records found in only one
-run.
-
-The command creates a sibling directory named
-``comparison_RUN_A_vs_RUN_B`` containing:
-
-* ``comparison.json`` with agreement metrics and record counts; and
-* ``disagreements.csv`` with missing records and categorical disagreements for
-  human review.
-
-Comparison is local and free. It does not use another model to adjudicate
-differences; the exported disagreements are intended for researcher review.
-
-Select or intentionally rerun records
--------------------------------------
-
-``prepare`` supports three record-selection strategies:
-
-* no selector prepares every validated row;
-* ``--sample-size N --seed S`` chooses a deterministic random pilot; and
-* ``--ids-file PATH`` chooses source record IDs from a UTF-8 file containing
-  one ID per line and no header.
-
-A selected run defaults to ``sync`` execution; a full run defaults to
-``batch``. Override either decision with ``--execution sync`` or
-``--execution batch``. Both modes use the same run layout, validation,
-processing, audit, and provenance code.
-
-To intentionally recode successful records, put their source IDs in a text
-file. For example, ``rerun_ids.txt`` could contain:
-
-.. code-block:: text
-
-   GRANT-002
-   GRANT-007
-   GRANT-014
-
-Use the values from the source column configured as ``input.id_column``. The
-file must be UTF-8 text with one ID per line, no header, and no commas. Blank
-lines are ignored; duplicate IDs and IDs that do not exist in the configured
-source are rejected.
-
-Prepare a separate run from that file:
-
-.. code-block:: console
-
-   $ kllm-batch prepare -c my-project/project.yaml --provider openai \
-       --ids-file rerun_ids.txt
-
-Keeping intentional reruns separate preserves the original results and makes
-the downstream choice explicit. Use ``compare`` when you want to examine the
-differences; reserve ``retry`` for recorded failures.
-
-Configure a project in depth
-----------------------------
-
-Input mappings
-~~~~~~~~~~~~~~
-
-One input row represents one research unit. Configure a stable ``id_column``
-when units must be compared across versions. Without one, IDs are derived from
-the source-file checksum and zero-based row number.
-
-``fields_sent`` maps names visible to the model to source columns.
-``columns_preserved`` is carried into normalized results locally and is not
-placed in prompts. For example:
-
-.. code-block:: yaml
-
-   input:
-     path: data/input-data.csv
-     id_column: grant_id
-     fields_sent:
-       project_title: project_title
-       abstract: abstract
-     columns_preserved: [year, investigator, source_file]
-     required_fields: [abstract]
-
-Duplicate normalized IDs and exact duplicate content across all
-``fields_sent`` values are blocking errors. Correct the input upstream or send
-a genuinely distinguishing field; validation never chooses a row to keep.
-
-Prompts and context
-~~~~~~~~~~~~~~~~~~~
-
-The user prompt must include ``${records_json}``. Named context files configured
-under ``prompt.context`` become placeholders such as ``${codebook_json}``.
-Context may be CSV, JSON, YAML, or text. ``rows_per_request`` controls how many
-records are serialized into each rendered request.
-
-Schema portability
-~~~~~~~~~~~~~~~~~~
-
-``schema.json`` describes one result row. For portability across supported
-providers, every object should set ``additionalProperties: false``, list every
-property as required, and express optional values with a nullable type such as
-``["string", "null"]``.
-
-The Anthropic adapter converts nullable type arrays into equivalent ``anyOf``
-branches and moves unsupported numeric or length bounds into provider schema
-descriptions. The original project schema remains unchanged and is enforced
-during local response validation.
-
-For structured extraction, use nullable fields when a fact may be absent and
-instruct the model to return ``null`` rather than infer unsupported details.
-PDF parsing and OCR remain upstream steps.
-
-Limits, models, and cost
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Use ``rows_per_request``, ``max_input_tokens``, ``max_output_tokens``, and
-per-field ``field_limits`` to keep payloads within the chosen model's limits.
-Truncation is never implicit; it must be configured for a named field.
-
-Each provider entry selects a model and may set provider options, segment
-limits, and explicit sync or batch input/output prices. Unknown pricing blocks
-preparation until dated price overrides are configured. The
-``budget.max_estimated_usd`` ceiling blocks runs whose conservative estimate is
-too high.
-
-Monitor and recover a run
+Cancel and recover a run
 -------------------------
 
 Cancel and continue safely
@@ -262,6 +118,132 @@ Other recovery commands
   ``state.previous.json``. Preserve both when seeking support.
 * Remove a run's ``.run.lock`` only after verifying that no other local command
   is operating on that run.
+
+Intentionally rerun or select specific records
+------------------------------------------------
+
+``prepare`` supports three record-selection strategies:
+
+* no selector prepares every validated row;
+* ``--sample-size N --seed S`` chooses a deterministic random pilot; and
+* ``--ids-file PATH`` chooses source record IDs from a UTF-8 file containing
+  one ID per line and no header.
+
+A selected run defaults to ``sync`` execution; a full run defaults to
+``batch``. Override either decision with ``--execution sync`` or
+``--execution batch``. Both modes use the same run layout, validation,
+processing, audit, and provenance code.
+
+To intentionally recode successful records, put their source IDs in a text
+file. For example, ``rerun_ids.txt`` could contain:
+
+.. code-block:: text
+
+   GRANT-002
+   GRANT-007
+   GRANT-014
+
+Use the values from the source column configured as ``input.id_column``. The
+file must be UTF-8 text with one ID per line, no header, and no commas. Blank
+lines are ignored; duplicate IDs and IDs that do not exist in the configured
+source are rejected.
+
+Prepare a separate run from that file:
+
+.. code-block:: console
+
+   $ kllm-batch prepare -c my-project/project.yaml --provider openai \
+       --ids-file rerun_ids.txt
+
+Keeping intentional reruns separate preserves the original results and makes
+the downstream choice explicit. Use ``compare`` when you want to examine the
+differences; reserve ``retry`` for recorded failures.
+
+Compare providers or repeated runs
+------------------------------------
+
+``compare`` is useful for assessing robustness across providers, models,
+prompt versions, or repeated runs. For the clearest interpretation, use the
+same selected record IDs and the same output schema in both processed runs.
+
+For example, prepare the same deterministic pilot for both providers:
+
+.. code-block:: console
+
+   $ kllm-batch prepare -c my-project/project.yaml --provider openai \
+       --sample-size 100 --seed 42
+   $ kllm-batch prepare -c my-project/project.yaml --provider anthropic \
+       --sample-size 100 --seed 42
+
+Review, submit, and process both runs. Then compare them:
+
+.. code-block:: console
+
+   $ kllm-batch compare OPENAI_RUN_ID ANTHROPIC_RUN_ID
+
+Runs are joined by ``record_id``, never row order. For fields defined with
+``enum`` in the first run's schema, the comparison reports the number compared,
+percent agreement, and Cohen's kappa. It also counts records found in only one
+run.
+
+The command creates a sibling directory named
+``comparison_RUN_A_vs_RUN_B`` containing:
+
+* ``comparison.json`` with agreement metrics and record counts; and
+* ``disagreements.csv`` with missing records and categorical disagreements for
+  human review.
+
+Comparison is local and free. It does not use another model to adjudicate
+differences; the exported disagreements are intended for researcher review.
+
+Configure a project in depth
+----------------------------
+
+See :doc:`project_settings` for what each ``project.yaml`` field means. This
+section covers behavior that only matters for larger or less typical runs.
+
+Input mappings
+~~~~~~~~~~~~~~
+
+Duplicate normalized IDs and exact duplicate content across all
+``fields_sent`` values are blocking validation errors. Correct the input
+upstream or send a genuinely distinguishing field; validation never chooses a
+row to keep.
+
+Prompts and context
+~~~~~~~~~~~~~~~~~~~
+
+The user prompt must include ``${records_json}``; validation rejects a
+project whose user prompt omits it. Named context files configured under
+``prompt.context`` become additional placeholders such as
+``${codebook_json}`` and may be CSV, JSON, YAML, or plain text.
+
+Schema portability
+~~~~~~~~~~~~~~~~~~
+
+``schema.json`` describes one result row. For portability across supported
+providers, every object should set ``additionalProperties: false``, list every
+property as required, and express optional values with a nullable type such as
+``["string", "null"]``.
+
+The Anthropic adapter converts nullable type arrays into equivalent ``anyOf``
+branches and moves unsupported numeric or length bounds into provider schema
+descriptions. The original project schema remains unchanged and is enforced
+during local response validation.
+
+For structured extraction, use nullable fields when a fact may be absent and
+instruct the model to return ``null`` rather than infer unsupported details.
+PDF parsing and OCR remain upstream steps.
+
+Limits, models, and cost
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Beyond ``rows_per_request``, ``max_input_tokens``, and ``max_output_tokens``,
+per-field ``field_limits`` truncate a named field; truncation is never
+implicit. Each provider entry may also set provider options, segment limits,
+and explicit sync or batch input/output prices — unknown pricing blocks
+preparation until dated price overrides are configured, regardless of
+``budget.max_estimated_usd``.
 
 Understand artifacts and provenance
 -----------------------------------
