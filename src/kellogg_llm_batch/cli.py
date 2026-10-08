@@ -166,8 +166,11 @@ def _print_validation(report: dict) -> None:
         value = "unknown" if estimate["estimated_usd"] is None else f"${estimate['estimated_usd']:.4f}"
         console.print(f"  {provider}: estimated maximum {value}")
     console.print(
-        "[dim]Estimates use an approximate character-based token count and batch-rate "
-        "pricing; a sync/pilot run bills at the (higher) sync rate per request.[/dim]"
+        "[dim]Worst-case ceiling, not an expected cost: input size is approximated by "
+        "character count, and every request is assumed to use the full task.max_output_tokens. "
+        "Batch-rate pricing is shown; a sync/pilot run bills at the (higher) sync rate. For a "
+        "realistic forecast, run a pilot and scale its run_reports/run_summary.json "
+        "actual_usage_cost_usd by your full row count.[/dim]"
     )
 
 
@@ -207,7 +210,12 @@ def prepare_command(
         console.print(f"Purpose: {manifest['purpose']} | Selection: {manifest['selection']['method']} | Execution: {manifest['execution']}")
         console.print(f"Selected rows: {manifest['selected_rows']:,} of {manifest['source_total_rows']:,}")
         console.print(f"Estimated maximum cost: ${manifest['cost_estimate']['estimated_usd']:.4f}")
-        console.print("[dim]Based on an approximate character-based token count; actual billed tokens may vary.[/dim]")
+        console.print(
+            "[dim]Worst-case ceiling: input size is approximated by character count, and "
+            "every request assumes the full task.max_output_tokens. For a realistic forecast, "
+            "run a pilot and scale its run_reports/run_summary.json actual_usage_cost_usd by "
+            "your full row count.[/dim]"
+        )
         console.print(f"Inspect: {run_dir / 'REVIEW.md'}")
         console.print(f"Submit with: kllm-batch submit {run_dir}")
     except Exception as exc:

@@ -146,6 +146,17 @@ Providers and budget
 * ``budget.max_estimated_usd`` — blocks a run whose estimated maximum cost
   exceeds this ceiling.
 
+The estimate it checks against is a worst-case ceiling, not an expected
+cost: input size is approximated from character count (not an exact
+tokenizer count), and every request is assumed to use the full
+``task.max_output_tokens``, since the model's actual output length is not
+known in advance. Real spend is usually well below this ceiling. For a
+realistic forecast before preparing a full run, prepare and submit a small
+pilot (``--sample-size`` or ``--ids-file``), then scale its
+``run_reports/run_summary.json`` ``actual_usage_cost_usd`` — which reflects
+real provider-reported token usage — by the ratio of your full row count to
+the pilot's row count.
+
 Common OpenAI options include ``temperature`` (0–2), ``top_p`` (0–1), and
 ``reasoning.effort``. Common Anthropic options include ``temperature`` (0–1),
 ``top_p`` (0–1), ``top_k`` (a nonnegative integer), and ``stop_sequences`` (an
