@@ -2,6 +2,10 @@
 
 This example classifies ten entirely synthetic grants. It is safe to inspect and modify; it contains no real research data.
 
+Basic shell wrappers for this walkthrough are available in
+[`walkthrough/`](walkthrough/README.md). They preserve the same review and cost
+confirmation steps while resolving project paths from the script location.
+
 ## 1. Install
 
 Create and activate your own dedicated mamba environment. Then install the

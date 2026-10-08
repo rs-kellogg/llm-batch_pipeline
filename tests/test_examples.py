@@ -133,8 +133,10 @@ def test_example_shell_scripts_are_valid_bash():
     scripts = sorted(
         (REPOSITORY_ROOT / "examples" / "grant_coding" / "multisegment").glob("*.sh")
     ) + sorted(
+        (REPOSITORY_ROOT / "examples" / "grant_coding" / "walkthrough").glob("*.sh")
+    ) + sorted(
         (REPOSITORY_ROOT / "examples" / "job_post_attachments").glob("*.sh")
     )
-    assert len(scripts) == 9
+    assert len(scripts) == 18
     for script in scripts:
         subprocess.run(["bash", "-n", str(script)], check=True)
