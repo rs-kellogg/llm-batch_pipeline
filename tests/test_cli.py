@@ -6,6 +6,8 @@ import yaml
 
 import kellogg_llm_batch.core as core
 from kellogg_llm_batch.cli import app
+from kellogg_llm_batch.core import prepare_run, submit_run
+from kellogg_llm_batch.state import load_state
 from conftest import FakeAdapter
 
 
@@ -212,6 +214,124 @@ def test_cancel_command_reports_errors_for_unknown_run(tmp_path):
     result = runner.invoke(app, ["cancel", str(tmp_path / "missing-run")])
     assert result.exit_code == 1
     assert "Run not found" in result.stdout
+
+
+def test_submit_command_targets_repeated_segment_options(
+    example_config, tmp_path, monkeypatch
+):
+    raw = yaml.safe_load(example_config.read_text())
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
+    raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
+    raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
+    raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
+    raw["prompt"]["context"]["codebook"]["path"] = str(example_config.parent / "context" / "codebook.csv")
+    raw["providers"]["openai"]["max_requests_per_batch"] = 1
+    raw["output"]["runs_directory"] = str(tmp_path / "runs")
+    config = tmp_path / "project.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    run = prepare_run(config, "openai", execution="batch")
+
+    submitted = runner.invoke(
+        app,
+        ["submit", str(run), "--segment", "0", "--segment", "2"],
+        input="y\n",
+    )
+
+    assert submitted.exit_code == 0, submitted.stdout
+    assert "Submit batch segments 0, 2 containing 2 requests?" in submitted.stdout
+    assert "full prepared run's estimated maximum cost" in submitted.stdout
+    assert fake.submissions == 2
+    assert [segment["status"] for segment in load_state(run)["segments"]] == [
+        "submitted",
+        "prepared",
+        "submitted",
+        "prepared",
+    ]
+
+    repeated = runner.invoke(
+        app,
+        ["submit", str(run), "--segment", "0", "--segment", "0", "--yes"],
+    )
+    assert repeated.exit_code == 0
+    assert "already submitted" in repeated.stdout
+    assert "No API requests were run" in " ".join(repeated.stdout.split())
+    assert fake.submissions == 2
+
+
+def test_segment_cli_validation_happens_before_provider_calls(
+    example_config, tmp_path, monkeypatch
+):
+    raw = yaml.safe_load(example_config.read_text())
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
+    raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
+    raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
+    raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
+    raw["prompt"]["context"]["codebook"]["path"] = str(example_config.parent / "context" / "codebook.csv")
+    raw["output"]["runs_directory"] = str(tmp_path / "runs")
+    config = tmp_path / "project.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+
+    batch_run = prepare_run(config, "openai", execution="batch")
+    invalid = runner.invoke(
+        app, ["submit", str(batch_run), "--segment", "99", "--yes"]
+    )
+    assert invalid.exit_code == 1
+    assert "Unknown segment indexes" in invalid.stdout
+    assert fake.submissions == 0
+
+    sync_run_dir = prepare_run(
+        config, "openai", sample_size=4, seed=42, execution="sync"
+    )
+    synchronous = runner.invoke(
+        app, ["submit", str(sync_run_dir), "--segment", "0", "--yes"]
+    )
+    assert synchronous.exit_code == 1
+    assert "available only for batch runs" in synchronous.stdout
+    assert fake.sync_calls == 0
+
+
+def test_cancel_command_targets_one_segment(
+    example_config, tmp_path, monkeypatch
+):
+    class RecordingAdapter(FakeAdapter):
+        def __init__(self):
+            super().__init__()
+            self.cancelled = []
+
+        def cancel(self, batch_id):
+            self.cancelled.append(batch_id)
+            return super().cancel(batch_id)
+
+    raw = yaml.safe_load(example_config.read_text())
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
+    raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
+    raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
+    raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
+    raw["prompt"]["context"]["codebook"]["path"] = str(example_config.parent / "context" / "codebook.csv")
+    raw["providers"]["openai"]["max_requests_per_batch"] = 1
+    raw["output"]["runs_directory"] = str(tmp_path / "runs")
+    config = tmp_path / "project.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    adapter = RecordingAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    run = prepare_run(config, "openai", execution="batch")
+    submit_run(run, adapter, segment_indices={0, 1})
+    target_batch_id = load_state(run)["segments"][1]["remote_batch_id"]
+
+    result = runner.invoke(app, ["cancel", str(run), "--segment", "1"])
+
+    assert result.exit_code == 0, result.stdout
+    assert adapter.cancelled == [target_batch_id]
+    assert [segment["status"] for segment in load_state(run)["segments"]] == [
+        "submitted",
+        "cancelled",
+        "prepared",
+        "prepared",
+    ]
 
 
 def test_sync_watch_prints_each_poll_status(example_config, tmp_path, monkeypatch):

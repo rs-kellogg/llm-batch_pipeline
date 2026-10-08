@@ -255,6 +255,43 @@ the run manifest. See :doc:`project_settings` for supported common controls,
 reserved request keys, model-compatibility cautions, and the distinction
 between model generation settings and the pilot row-selection seed.
 
+Stage batch segments
+~~~~~~~~~~~~~~~~~~~~
+
+Preparation numbers segments from zero in the same order shown by ``status``
+and used in filenames such as ``segment_0000.jsonl``. To submit only selected
+remote batch jobs, repeat ``--segment``:
+
+.. code-block:: console
+
+   $ kllm-batch submit RUN_DIR --segment 0 --segment 2
+
+The confirmation reports the selected segment indexes and request count. It
+retains the full prepared-run cost estimate as a conservative ceiling rather
+than presenting an inaccurate prorated estimate. Segments not selected remain
+``prepared``. A later command can submit another subset, while omitting
+``--segment`` submits every remaining eligible segment. Repeating a submission
+for a segment that already has a remote batch ID is an idempotent no-op.
+
+``status`` and ``sync`` continue to operate across the run, contacting only
+segments with remote jobs. This permits a staged workflow: submit a subset,
+run ``sync --watch``, inspect its provisional outputs, and then submit the
+remaining segments. Outputs are rebuilt cumulatively, while the final audit
+and run summary wait until every segment is resolved.
+
+Target cancellation the same way:
+
+.. code-block:: console
+
+   $ kllm-batch cancel RUN_DIR --segment 2
+
+Omitting ``--segment`` requests cancellation for every submitted or running
+segment. Omitted prepared segments remain available for later submission, and
+the run becomes fully ``cancelled`` only when all its segments are cancelled.
+Provider work completed before cancellation may still be billable. Segment
+selection is limited to batch execution; synchronous pilots resume from their
+per-request checkpoints instead of creating remote segment jobs.
+
 Understand artifacts and provenance
 -----------------------------------
 

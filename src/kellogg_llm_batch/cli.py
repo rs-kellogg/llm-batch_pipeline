@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .attachments import attach_files_to_run
-from .core import audit_run, cancel_run, compare_runs, find_incomplete_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, sync_checkpoint_progress, sync_run
+from .core import audit_run, batch_submission_summary, cancel_run, compare_runs, find_incomplete_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, sync_checkpoint_progress, sync_run
 from .scaffold import scaffold_project
 from .state import load_state, resolve_run
 from .validation import ProjectValidationError, validate_project
@@ -200,12 +200,19 @@ def prepare_command(
 def submit_command(
     run: Path = typer.Argument(..., help="Run directory printed by prepare."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm submission non-interactively."),
+    segment: Optional[list[int]] = typer.Option(
+        None,
+        "--segment",
+        min=0,
+        help="Zero-based batch segment index to submit; repeat to select several segments.",
+    ),
 ):
     """Execute an inspected run using its recorded sync or batch mode.
 
-    Example: `kllm-batch submit RUN_DIR`; use `--yes` only in reviewed
+    Example: `kllm-batch submit RUN_DIR --segment 0 --segment 2`; omit
+    `--segment` to submit every eligible segment. Use `--yes` only in reviewed
     automation. Requires the provider API key and can incur cost. Synchronous
-    runs process immediately; batch runs continue through status and sync.
+    runs process immediately and do not accept segment selection.
     """
     try:
         run_dir = resolve_run(run)
@@ -217,6 +224,12 @@ def submit_command(
         estimate = manifest["cost_estimate"]["estimated_usd"]
         mode = manifest.get("execution", "batch")
         request_count = manifest["request_count"]
+        segment_indices = set(segment) if segment is not None else None
+        if mode == "sync" and segment_indices is not None:
+            raise ValueError(
+                "--segment is available only for batch runs; synchronous runs resume "
+                "from per-request checkpoints"
+            )
         confirmation_count = request_count
         confirmation_estimate = estimate
         confirmation_needed = True
@@ -283,10 +296,44 @@ def submit_command(
                     f"All {request_count} synchronous requests are checkpointed. "
                     "No API requests will run; continuing local processing."
                 )
+        batch_summary = None
+        if mode == "batch":
+            batch_summary = batch_submission_summary(run_dir, segment_indices)
+            confirmation_count = batch_summary["request_count"]
+            if confirmation_count == 0:
+                indexes = batch_summary["selected_segment_indexes"]
+                console.print(
+                    f"No action: selected batch segment(s) {indexes} are already submitted. "
+                    "No API requests were run."
+                )
+                return
+
         noun = "request" if confirmation_count == 1 else "requests"
         qualifier = " remaining" if mode == "sync" and confirmation_count < request_count else ""
         cost_qualifier = " remaining" if qualifier else ""
-        if attached:
+        partial_batch = mode == "batch" and (
+            segment_indices is not None or confirmation_count < request_count
+        )
+        if partial_batch:
+            indexes = batch_summary["pending_segment_indexes"]
+            segment_noun = "segment" if len(indexes) == 1 else "segments"
+            index_text = ", ".join(str(index) for index in indexes)
+            if attached:
+                console.print(
+                    f"[bold yellow]File input cost is unknown.[/bold yellow] The prepared ${estimate:.4f} "
+                    "estimate covers text only; the configured budget does not cap file processing cost."
+                )
+                question = (
+                    f"Submit batch {segment_noun} {index_text} containing "
+                    f"{confirmation_count} {noun} with unknown total cost?"
+                )
+            else:
+                question = (
+                    f"Submit batch {segment_noun} {index_text} containing {confirmation_count} {noun}? "
+                    f"The full prepared run's estimated maximum cost is ${estimate:.4f}; "
+                    "this subset is smaller."
+                )
+        elif attached:
             console.print(
                 f"[bold yellow]File input cost is unknown.[/bold yellow] The prepared ${estimate:.4f} "
                 "estimate covers text only; the configured budget does not cap file processing cost."
@@ -305,7 +352,11 @@ def submit_command(
                 message += " [yellow]API/request failure recorded.[/yellow]"
             console.print(message)
 
-        state = submit_run(run_dir, progress_callback=print_sync_progress if mode == "sync" else None)
+        state = submit_run(
+            run_dir,
+            progress_callback=print_sync_progress if mode == "sync" else None,
+            segment_indices=segment_indices,
+        )
         action = "Processed" if mode == "sync" else "Submitted"
         console.print(f"{action} run {state['run_id']} — {state['status']}")
         if mode == "sync" and state["status"] == "completed_with_failures":
@@ -408,15 +459,29 @@ def sync_command(
 
 
 @app.command("cancel")
-def cancel_command(run: Path = typer.Argument(..., help="Run directory.")):
+def cancel_command(
+    run: Path = typer.Argument(..., help="Run directory."),
+    segment: Optional[list[int]] = typer.Option(
+        None,
+        "--segment",
+        min=0,
+        help="Zero-based batch segment index to cancel; repeat to select several segments.",
+    ),
+):
     """Cancel submitted or running remote jobs without deleting artifacts.
 
-    Example: `kllm-batch cancel RUN_DIR`. Requires the provider API key. Work
-    already processed by the provider may still be billable; run `sync` later
-    if partial results become available.
+    Example: `kllm-batch cancel RUN_DIR --segment 2`; omit `--segment` to
+    cancel every eligible remote batch job. Requires the provider API key.
+    Work already processed by the provider may still be billable; run `sync`
+    later if partial results become available.
     """
     try:
-        _print_state(cancel_run(run))
+        _print_state(
+            cancel_run(
+                run,
+                segment_indices=set(segment) if segment is not None else None,
+            )
+        )
     except Exception as exc:
         _fail(exc)
 

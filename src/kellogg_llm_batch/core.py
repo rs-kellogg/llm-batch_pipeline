@@ -11,7 +11,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Collection
 
 import pandas as pd
 from jsonschema import Draft202012Validator
@@ -514,34 +514,168 @@ def _execute_sync_requests(
     return load_state(run_dir)
 
 
+def _select_segments(
+    state: dict[str, Any],
+    segment_indices: Collection[int] | None,
+) -> list[dict[str, Any]]:
+    segments = state["segments"]
+    if segment_indices is None:
+        return segments
+    requested = set(segment_indices)
+    invalid_values = sorted(
+        value
+        for value in requested
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0
+    )
+    if invalid_values:
+        raise ValueError(f"Segment indexes must be nonnegative integers: {invalid_values}")
+    available = {segment["index"] for segment in segments}
+    unknown = sorted(requested - available)
+    if unknown:
+        raise ValueError(
+            f"Unknown segment indexes: {unknown}; available indexes are {sorted(available)}"
+        )
+    return [segment for segment in segments if segment["index"] in requested]
+
+
+def _validate_submit_targets(
+    segments: list[dict[str, Any]],
+    *,
+    explicit: bool,
+) -> None:
+    if not explicit:
+        return
+    ineligible = [
+        (segment["index"], segment["status"])
+        for segment in segments
+        if not segment.get("remote_batch_id")
+        and segment["status"] not in {"prepared", "failed"}
+    ]
+    if ineligible:
+        details = ", ".join(f"{index} ({status})" for index, status in ineligible)
+        raise ValueError(f"Selected segments are not eligible for submission: {details}")
+
+
+def _validate_cancel_targets(
+    segments: list[dict[str, Any]],
+    *,
+    explicit: bool,
+) -> None:
+    if not explicit:
+        return
+    ineligible = [
+        (segment["index"], segment["status"])
+        for segment in segments
+        if segment["status"] not in {"submitted", "running"}
+        or not segment.get("remote_batch_id")
+    ]
+    if ineligible:
+        details = ", ".join(f"{index} ({status})" for index, status in ineligible)
+        raise ValueError(f"Selected segments are not eligible for cancellation: {details}")
+
+
+def _refresh_run_status(state: dict[str, Any]) -> None:
+    statuses = {segment["status"] for segment in state["segments"]}
+    if not statuses:
+        state["status"] = "prepared"
+    elif statuses == {"cancelled"}:
+        state["status"] = "cancelled"
+    elif statuses == {"processed"}:
+        if state.get("status") not in {"completed", "completed_with_failures"}:
+            state["status"] = "completed"
+    elif statuses <= {"processed", "cancelled"}:
+        state["status"] = "completed_with_failures"
+    elif statuses <= {"completed", "downloaded", "processed"}:
+        state["status"] = "completed"
+    elif "running" in statuses:
+        state["status"] = "running"
+    elif "submitted" in statuses:
+        state["status"] = "submitted"
+    elif statuses & {"completed", "downloaded"}:
+        state["status"] = "running"
+    elif "prepared" in statuses:
+        state["status"] = "prepared"
+    elif "failed" in statuses:
+        state["status"] = "failed"
+    else:
+        state["status"] = "running"
+
+
+def batch_submission_summary(
+    run: str | Path,
+    segment_indices: Collection[int] | None = None,
+) -> dict[str, Any]:
+    """Summarize the batch work a submit call would start without provider calls."""
+    run_dir = resolve_run(run)
+    manifest = _manifest(run_dir)
+    if manifest.get("execution", "batch") == "sync":
+        if segment_indices is not None:
+            raise ValueError(
+                "--segment is available only for batch runs; synchronous runs resume "
+                "from per-request checkpoints"
+            )
+        raise ValueError("Submission summaries apply only to batch runs")
+    _verify_prepared_artifacts(run_dir, manifest)
+    state = load_state(run_dir)
+    selected = _select_segments(state, segment_indices)
+    _validate_submit_targets(selected, explicit=segment_indices is not None)
+    pending = [segment for segment in selected if not segment.get("remote_batch_id")]
+    request_count = 0
+    for segment in pending:
+        with request_file_for_segment(run_dir, manifest, segment).open(
+            encoding="utf-8"
+        ) as handle:
+            request_count += sum(1 for line in handle if line.strip())
+    return {
+        "selected_segment_indexes": [segment["index"] for segment in selected],
+        "pending_segment_indexes": [segment["index"] for segment in pending],
+        "already_submitted_indexes": [
+            segment["index"] for segment in selected if segment.get("remote_batch_id")
+        ],
+        "request_count": request_count,
+    }
+
+
 def submit_run(
     run: str | Path,
     adapter: ProviderAdapter | None = None,
     progress_callback: Callable[[int, int, NormalizedResult], None] | None = None,
+    *,
+    segment_indices: Collection[int] | None = None,
 ) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
     adapter = adapter or get_provider(manifest["provider"])
     _verify_prepared_artifacts(run_dir, manifest)
     if manifest.get("execution", "batch") == "sync":
+        if segment_indices is not None:
+            raise ValueError(
+                "Segment selection is available only for batch runs; synchronous runs "
+                "resume from per-request checkpoints"
+            )
         return _execute_sync_requests(run_dir, manifest, adapter, progress_callback)
     with RunLock(run_dir):
         state = load_state(run_dir)
+        selected = _select_segments(state, segment_indices)
+        _validate_submit_targets(selected, explicit=segment_indices is not None)
         if state.get("status") in {"completed", "completed_with_failures", "cancelled"}:
             return state
-        for segment in state["segments"]:
+        submitted_any = False
+        for segment in selected:
             if segment["remote_batch_id"]:
                 continue
             try:
                 handle = adapter.submit(request_file_for_segment(run_dir, manifest, segment))
                 segment.update(status="submitted", remote_batch_id=handle.batch_id, input_file_id=handle.input_file_id, provider_status=handle.status, error=None)
+                submitted_any = True
             except Exception as exc:
                 segment.update(status="failed", error=str(exc))
+                _refresh_run_status(state)
                 save_state(run_dir, state)
                 raise
             save_state(run_dir, state)
-        if any(segment["status"] == "submitted" for segment in state["segments"]):
-            state["status"] = "submitted"
+        _refresh_run_status(state)
+        if submitted_any:
             state["stage"] = "submitted"
         save_state(run_dir, state)
         return state
@@ -561,35 +695,48 @@ def status_run(run: str | Path, adapter: ProviderAdapter | None = None) -> dict:
             segment["status"] = "completed" if remote["state"] == "completed" else remote["state"]
             segment["error"] = None if remote["state"] != "failed" else f"provider status: {remote['provider_status']}"
         statuses = {segment["status"] for segment in state["segments"]}
-        if statuses == {"prepared"}:
-            state["status"] = "prepared"
-        elif statuses == {"processed"}:
-            # Preserve the audited terminal outcome, including partial failure.
-            if state.get("status") not in {"completed", "completed_with_failures"}:
-                state["status"] = "completed"
-        elif statuses <= {"completed", "downloaded", "processed"}:
-            state["status"] = "completed"
-        elif statuses == {"failed"}:
-            state["status"] = "failed"
-        else:
-            state["status"] = "running"
+        _refresh_run_status(state)
         if state["status"] in {"submitted", "running", "completed"} and statuses != {"processed"}:
             state["stage"] = "running"
         save_state(run_dir, state)
         return state
 
 
-def cancel_run(run: str | Path, adapter: ProviderAdapter | None = None) -> dict:
+def cancel_run(
+    run: str | Path,
+    adapter: ProviderAdapter | None = None,
+    *,
+    segment_indices: Collection[int] | None = None,
+) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
+    if manifest.get("execution", "batch") == "sync" and segment_indices is not None:
+        raise ValueError(
+            "Segment selection is available only for batch runs; synchronous runs do not "
+            "create remote segment jobs"
+        )
     adapter = adapter or get_provider(manifest["provider"])
     with RunLock(run_dir):
         state = load_state(run_dir)
-        for segment in state["segments"]:
+        selected = _select_segments(state, segment_indices)
+        _validate_cancel_targets(selected, explicit=segment_indices is not None)
+        for segment in selected:
             if segment["remote_batch_id"] and segment["status"] in {"submitted", "running"}:
-                adapter.cancel(segment["remote_batch_id"])
-                segment["status"] = "cancelled"
-        state["status"] = "cancelled"
+                try:
+                    response = adapter.cancel(segment["remote_batch_id"])
+                    provider_status = response.get("status") or response.get("processing_status")
+                    segment.update(
+                        status="cancelled",
+                        provider_status=provider_status or segment.get("provider_status"),
+                        error=None,
+                    )
+                except Exception as exc:
+                    segment["error"] = str(exc)
+                    _refresh_run_status(state)
+                    save_state(run_dir, state)
+                    raise
+                save_state(run_dir, state)
+        _refresh_run_status(state)
         save_state(run_dir, state)
         return state
 

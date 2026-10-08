@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 import kellogg_llm_batch.core as core
-from kellogg_llm_batch.core import audit_run, cancel_run, compare_runs, prepare_retry, prepare_run, submit_run, sync_run
+from kellogg_llm_batch.core import audit_run, batch_submission_summary, cancel_run, compare_runs, prepare_retry, prepare_run, submit_run, sync_run
 from kellogg_llm_batch.providers.base import ProviderAdapter
 from kellogg_llm_batch.state import load_state, save_state
 
@@ -26,6 +26,17 @@ def _temporary_config(example_config, tmp_path):
     path = tmp_path / "project.yaml"
     path.write_text(yaml.safe_dump(raw), encoding="utf-8")
     return path
+
+
+def _segmented_run(example_config, tmp_path, monkeypatch, adapter, segments=4):
+    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["providers"]["openai"]["max_requests_per_batch"] = 1
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    run = prepare_run(config, "openai", execution="batch")
+    assert len(load_state(run)["segments"]) == segments
+    return run
 
 
 def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
@@ -126,6 +137,104 @@ def test_consolidated_request_map_supports_multiple_segments(example_config, tmp
     results = pd.read_parquet(run / "outputs" / "results.parquet")
     assert len(results) == 10
     assert results["record_id"].is_unique
+
+
+def test_selective_submit_is_idempotent_and_later_submit_sends_remainder(
+    example_config, tmp_path, monkeypatch
+):
+    adapter = FakeAdapter()
+    run = _segmented_run(example_config, tmp_path, monkeypatch, adapter)
+
+    summary = batch_submission_summary(run, {0, 2, 2})
+    assert summary == {
+        "selected_segment_indexes": [0, 2],
+        "pending_segment_indexes": [0, 2],
+        "already_submitted_indexes": [],
+        "request_count": 2,
+    }
+
+    state = submit_run(run, adapter, segment_indices={0, 2})
+    assert adapter.submissions == 2
+    assert [segment["status"] for segment in state["segments"]] == [
+        "submitted",
+        "prepared",
+        "submitted",
+        "prepared",
+    ]
+
+    submit_run(run, adapter, segment_indices={0, 2})
+    assert adapter.submissions == 2
+    assert batch_submission_summary(run, {0, 2})["request_count"] == 0
+
+    state = submit_run(run, adapter)
+    assert adapter.submissions == 4
+    assert all(segment["status"] == "submitted" for segment in state["segments"])
+
+
+@pytest.mark.parametrize("indexes", [{-1}, {99}])
+def test_selective_submit_validates_all_indexes_before_provider_calls(
+    example_config, tmp_path, monkeypatch, indexes
+):
+    adapter = FakeAdapter()
+    run = _segmented_run(example_config, tmp_path, monkeypatch, adapter)
+
+    with pytest.raises(ValueError, match="Segment index|Unknown segment"):
+        submit_run(run, adapter, segment_indices=indexes)
+
+    assert adapter.submissions == 0
+    assert all(segment["status"] == "prepared" for segment in load_state(run)["segments"])
+
+
+def test_partial_sync_outputs_accumulate_and_final_audit_waits_for_all_segments(
+    example_config, tmp_path, monkeypatch
+):
+    adapter = FakeAdapter()
+    run = _segmented_run(example_config, tmp_path, monkeypatch, adapter)
+
+    submit_run(run, adapter, segment_indices={0, 2})
+    partial_state = sync_run(run, adapter=adapter)
+    partial_results = pd.read_parquet(run / "outputs" / "results.parquet")
+
+    assert [segment["status"] for segment in partial_state["segments"]] == [
+        "processed",
+        "prepared",
+        "processed",
+        "prepared",
+    ]
+    assert partial_state["status"] == "running"
+    assert len(partial_results) == 6
+    assert not (run / "run_reports" / "audit.json").exists()
+    assert not (run / "run_reports" / "run_summary.json").exists()
+
+    submit_run(run, adapter)
+    final_state = sync_run(run, adapter=adapter)
+    final_results = pd.read_parquet(run / "outputs" / "results.parquet")
+
+    assert final_state["status"] == "completed"
+    assert len(final_results) == 10
+    assert final_results["record_id"].is_unique
+    assert json.loads((run / "run_reports" / "audit.json").read_text())["complete"] is True
+
+
+def test_segment_selection_is_rejected_for_synchronous_runs(
+    example_config, tmp_path, monkeypatch
+):
+    adapter = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    run = prepare_run(
+        _temporary_config(example_config, tmp_path),
+        "openai",
+        sample_size=4,
+        seed=42,
+    )
+
+    with pytest.raises(ValueError, match="only for batch runs"):
+        submit_run(run, adapter, segment_indices={0})
+    with pytest.raises(ValueError, match="only for batch runs"):
+        cancel_run(run, adapter, segment_indices={0})
+
+    assert adapter.submissions == 0
+    assert adapter.sync_calls == 0
 
 
 def test_compare_exports_disagreements(example_config, tmp_path, monkeypatch):
@@ -464,6 +573,98 @@ class RecordingCancelAdapter(FakeAdapter):
     def cancel(self, batch_id):
         self.cancelled_batch_ids.append(batch_id)
         return super().cancel(batch_id)
+
+
+class FailSecondCancelAdapter(RecordingCancelAdapter):
+    def cancel(self, batch_id):
+        if len(self.cancelled_batch_ids) == 1:
+            raise RuntimeError("cancel unavailable")
+        return super().cancel(batch_id)
+
+
+def test_selective_cancel_preserves_prepared_segments_for_later_submission(
+    example_config, tmp_path, monkeypatch
+):
+    adapter = RecordingCancelAdapter()
+    run = _segmented_run(example_config, tmp_path, monkeypatch, adapter)
+    submit_run(run, adapter, segment_indices={0, 1})
+    submitted_ids = {
+        segment["index"]: segment["remote_batch_id"]
+        for segment in load_state(run)["segments"]
+        if segment["remote_batch_id"]
+    }
+
+    state = cancel_run(run, adapter, segment_indices={0})
+    assert adapter.cancelled_batch_ids == [submitted_ids[0]]
+    assert [segment["status"] for segment in state["segments"]] == [
+        "cancelled",
+        "submitted",
+        "prepared",
+        "prepared",
+    ]
+    assert state["status"] == "submitted"
+
+    state = cancel_run(run, adapter, segment_indices={1})
+    assert adapter.cancelled_batch_ids == [submitted_ids[0], submitted_ids[1]]
+    assert state["status"] == "prepared"
+
+    state = submit_run(run, adapter)
+    assert adapter.submissions == 4
+    assert [segment["status"] for segment in state["segments"]] == [
+        "cancelled",
+        "cancelled",
+        "submitted",
+        "submitted",
+    ]
+
+    state = cancel_run(run, adapter)
+    assert state["status"] == "cancelled"
+    assert all(segment["status"] == "cancelled" for segment in state["segments"])
+
+
+def test_explicit_cancel_rejects_ineligible_segments_before_provider_calls(
+    example_config, tmp_path, monkeypatch
+):
+    adapter = RecordingCancelAdapter()
+    run = _segmented_run(example_config, tmp_path, monkeypatch, adapter)
+    submit_run(run, adapter, segment_indices={0})
+
+    with pytest.raises(ValueError, match="not eligible for cancellation"):
+        cancel_run(run, adapter, segment_indices={0, 1})
+
+    assert adapter.cancelled_batch_ids == []
+    assert load_state(run)["segments"][0]["status"] == "submitted"
+
+
+def test_explicit_cancel_rejects_already_cancelled_segment(
+    example_config, tmp_path, monkeypatch
+):
+    adapter = RecordingCancelAdapter()
+    run = _segmented_run(example_config, tmp_path, monkeypatch, adapter)
+    submit_run(run, adapter, segment_indices=[0])
+    cancel_run(run, adapter, segment_indices=[0])
+
+    with pytest.raises(ValueError, match=r"0 \(cancelled\)"):
+        cancel_run(run, adapter, segment_indices=[0])
+
+    assert adapter.cancelled_batch_ids == ["fake-1"]
+
+
+def test_cancel_failure_preserves_earlier_segment_state(
+    example_config, tmp_path, monkeypatch
+):
+    adapter = FailSecondCancelAdapter()
+    run = _segmented_run(example_config, tmp_path, monkeypatch, adapter)
+    submit_run(run, adapter, segment_indices={0, 1})
+
+    with pytest.raises(RuntimeError, match="cancel unavailable"):
+        cancel_run(run, adapter, segment_indices={0, 1})
+
+    state = load_state(run)
+    assert state["segments"][0]["status"] == "cancelled"
+    assert state["segments"][1]["status"] == "submitted"
+    assert state["segments"][1]["error"] == "cancel unavailable"
+    assert state["status"] == "submitted"
 
 
 def test_cancel_run_cancels_submitted_segments_and_marks_run_cancelled(example_config, tmp_path, monkeypatch):

@@ -36,9 +36,9 @@ recovery guidance.
      - Local
      - Add one PNG/PDF per request to an unsubmitted run. See :doc:`file_attachments`.
    * - ``submit``
-     - ``kllm-batch submit RUN_DIR [--yes]``
+     - ``kllm-batch submit RUN_DIR [--segment INDEX]... [--yes]``
      - Provider / paid
-     - Execute the exact prepared requests using their recorded execution mode.
+     - Execute all eligible batch segments, or selected zero-based segments.
    * - ``status``
      - ``kllm-batch status RUN_DIR``
      - Provider
@@ -48,9 +48,9 @@ recovery guidance.
      - Provider
      - Retrieve batch responses, normalize results, and audit completeness.
    * - ``cancel``
-     - ``kllm-batch cancel RUN_DIR``
+     - ``kllm-batch cancel RUN_DIR [--segment INDEX]...``
      - Provider
-     - Request cancellation without deleting local artifacts.
+     - Request cancellation for all eligible or selected remote batch jobs.
    * - ``audit``
      - ``kllm-batch audit RUN_DIR``
      - Local
@@ -87,6 +87,12 @@ Prepare options used most often
 ``--execution sync|batch``
    Override the default execution mode. Selected runs default to ``sync``;
    complete runs default to ``batch``.
+
+``--segment INDEX``
+   On ``submit`` and ``cancel``, target one zero-based batch segment. Repeat the
+   option to select several segments, for example ``--segment 0 --segment 2``.
+   Omit it to retain the run-wide behavior. Synchronous runs use per-request
+   checkpoints and do not accept segment selection.
 
 Command boundaries
 ------------------
