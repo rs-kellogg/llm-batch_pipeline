@@ -95,11 +95,7 @@ Prepare a deterministic sample with OpenAI:
 
 .. code-block:: console
 
-   $ kllm-batch prepare \
-       -c examples/grant_coding/project.yaml \
-       --provider openai \
-       --sample-size 4 \
-       --seed 42
+   $ kllm-batch prepare -c examples/grant_coding/project.yaml --provider openai --sample-size 4 --seed 42
 
 See :doc:`basic` for what ``prepare`` does. The command prints a new directory
 under ``examples/grant_coding/runs/``; use that complete path as ``RUN_DIR`` in
@@ -144,8 +140,7 @@ Submit the exact requests you reviewed:
 See :doc:`basic` for what ``submit`` does for a synchronous pilot; it does not
 require a separate ``status`` or ``sync`` command here.
 
-To use Anthropic instead, prepare a separate pilot with
-``--provider anthropic``, set ``ANTHROPIC_API_KEY``, and submit that new run.
+The equivalent Anthropic pilot and complete-batch workflow appears below.
 
 5. Review the results
 ---------------------
@@ -190,15 +185,58 @@ grants. A complete run defaults to batch execution:
 
 .. code-block:: console
 
-   $ kllm-batch prepare \
-       -c examples/grant_coding/project.yaml \
-       --provider openai
+   $ kllm-batch prepare -c examples/grant_coding/project.yaml --provider openai
    $ kllm-batch submit RUN_DIR
    $ kllm-batch sync RUN_DIR --watch
 
 Use the new run directory printed by the second ``prepare`` command; do not
 reuse the pilot's path. Review the complete run before submitting it, just as
 you reviewed the pilot.
+
+7. Run with Anthropic
+---------------------
+
+Set the Anthropic credential if it is not already present:
+
+.. code-block:: console
+
+   $ export ANTHROPIC_API_KEY="your-key"
+
+Prepare and submit a separate deterministic pilot. The selected pilot runs
+synchronously, so ``submit`` processes its results and audit directly:
+
+.. code-block:: console
+
+   $ kllm-batch prepare -c examples/grant_coding/project.yaml --provider anthropic --sample-size 4 --seed 42
+   $ kllm-batch submit ANTHROPIC_PILOT_RUN_DIR
+
+After reviewing the pilot, prepare and process the complete Anthropic batch:
+
+.. code-block:: console
+
+   $ kllm-batch prepare -c examples/grant_coding/project.yaml --provider anthropic
+   $ kllm-batch submit ANTHROPIC_RUN_DIR
+   $ kllm-batch sync ANTHROPIC_RUN_DIR --watch
+
+Replace each placeholder with the complete run directory printed by its
+``prepare`` command. As with OpenAI batch runs, ``kllm-batch status
+ANTHROPIC_RUN_DIR`` and ``kllm-batch audit ANTHROPIC_RUN_DIR`` are optional
+diagnostics. ``sync --watch`` already polls status, processes the responses,
+and runs the audit.
+
+8. Compare providers
+--------------------
+
+After both complete runs have been processed, compare their results locally:
+
+.. code-block:: console
+
+   $ kllm-batch compare OPENAI_RUN_DIR ANTHROPIC_RUN_DIR
+
+The comparison reports agreement on categorical and string fields and exports
+disagreements for human review. It does not use a model to adjudicate
+differences. Use runs containing the same record IDs and output schema for the
+clearest interpretation.
 
 Where to go next
 ----------------
