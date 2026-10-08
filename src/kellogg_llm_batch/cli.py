@@ -556,30 +556,40 @@ def estimate_cost_command(
         help="Row count to project to; defaults to the project's full source row count.",
     ),
 ):
-    """Project a realistic full-run cost from a completed run's actual token usage.
+    """Project an asynchronous batch cost from a completed run's recorded token usage.
 
-    Example: `kllm-batch estimate-cost PILOT_RUN_DIR`. Scales the run's real
-    provider-reported token usage (run_reports/run_summary.json) by row count,
+    Example: `kllm-batch estimate-cost PILOT_RUN_DIR`. Scales the run's recorded
+    provider-reported aggregate usage (run_reports/run_summary.json) by row count,
     which is far more realistic than the worst-case ceiling `prepare`/`validate`
-    report. Requires the run to be synced and processed first; file-attachment
-    cost is never included, regardless of the source run.
+    report. A synchronous pilot is repriced at asynchronous batch rates; a small
+    batch pilot retains its batch rates. This is a configured-rate estimate, not
+    an exact provider bill.
     """
     try:
         result = extrapolate_cost_from_run(run, target_rows)
+        if result["source_execution"] == "sync":
+            console.print("Source pilot: synchronous; projection: asynchronous batch pricing.")
+        else:
+            console.print("Source pilot: asynchronous batch; projection uses the same batch pricing.")
         console.print(
-            f"Observed {result['observed_rows']:,} row(s): "
-            f"${result['observed_actual_cost_usd']:.4f} "
-            f"(${result['per_row_cost_usd']:.6f}/row)."
+            f"Observed usage across {result['observed_rows']:,} attempted row(s) "
+            f"({result['observed_valid_rows']:,} valid): "
+            f"${result['observed_usage_cost_usd']:.4f} at source-run rates "
+            f"(${result['per_row_usage_cost_usd']:.6f}/row)."
         )
         console.print(
-            f"Projected to {result['target_rows']:,} row(s): "
+            f"Projected asynchronous batch cost for {result['target_rows']:,} row(s): "
             f"${result['extrapolated_cost_usd']:.4f}"
         )
-        if result["excludes_file_input_cost"]:
+        if result["has_file_attachments"]:
             console.print(
-                "[bold yellow]Note:[/bold yellow] the source run had attached files; "
-                "this projection excludes file-input cost."
+                "[bold yellow]Note:[/bold yellow] attached-file processing may be included "
+                "in aggregate input tokens, but text and attachment usage cannot be separated."
             )
+        console.print(
+            "[dim]Configured token rates are applied to recorded aggregate usage; this is "
+            "not an exact provider bill.[/dim]"
+        )
         _print_json(result)
     except Exception as exc:
         _fail(exc)

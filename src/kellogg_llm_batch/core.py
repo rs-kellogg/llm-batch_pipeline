@@ -21,7 +21,7 @@ from .attachments import request_file_for_segment
 from .config import ProjectConfig, load_config
 from .data import canonicalize, load_source, normalize_id
 from .models import CanonicalRequest, NormalizedResult
-from .pricing import estimate_cost
+from .pricing import estimate_cost, token_prices
 from .prompts import load_context, load_prompt_files, render_user_prompt
 from .providers.base import ProviderAdapter, get_provider
 from .schema import load_row_schema, wrapped_schema
@@ -1012,15 +1012,22 @@ def _write_run_summary(run_dir: Path, audit: dict[str, Any]) -> None:
 
 
 def extrapolate_cost_from_run(run: str | Path, target_rows: int | None = None) -> dict[str, Any]:
-    """Scale a processed run's actual provider-reported token usage to a different row count.
+    """Project an asynchronous batch cost from a processed run's recorded usage.
 
     Unlike the worst-case ceiling from `prepare`/`validate` (character-approximated
-    input, maximum possible output per request), this uses the run's real recorded
-    `input_tokens`/`output_tokens` and billed cost, so it reflects typical output
-    length for this prompt/schema/data rather than the configured maximum.
+    input, maximum possible output per request), this uses provider-reported aggregate
+    `input_tokens`/`output_tokens`. The result applies configured token rates and is
+    not an exact bill because provider-specific billing details are not retained.
     """
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
+    _verify_prepared_artifacts(run_dir, manifest)
+    source_execution = manifest.get("execution")
+    if source_execution not in {"batch", "sync"}:
+        raise ValueError(
+            "Run manifest has no valid execution mode; expected 'sync' or 'batch', "
+            f"received {source_execution!r}"
+        )
     summary_path = run_dir / "run_reports" / "run_summary.json"
     if not summary_path.exists():
         raise ValueError(
@@ -1028,15 +1035,38 @@ def extrapolate_cost_from_run(run: str | Path, target_rows: int | None = None) -
             "(e.g. `kllm-batch sync`) before estimating from it"
         )
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    observed_rows = summary.get("valid_records", 0)
+    observed_rows = summary.get("expected_records", 0)
     if observed_rows <= 0:
-        raise ValueError("Run has no successfully processed records to extrapolate from")
-    actual_cost = summary.get("actual_usage_cost_usd")
-    if actual_cost is None:
+        raise ValueError("Run has no attempted records to extrapolate from")
+    observed_valid_rows = summary.get("valid_records", 0)
+    source_cost = manifest.get("cost_estimate") or {}
+    source_input_price = source_cost.get("input_price_per_million")
+    source_output_price = source_cost.get("output_price_per_million")
+    if source_input_price is None or source_output_price is None:
         raise ValueError(
-            "Run summary has no actual_usage_cost_usd; pricing may be unavailable "
+            "Run manifest has no source execution pricing; pricing may be unavailable "
             "for this provider/model"
         )
+    if source_cost.get("execution", source_execution) != source_execution:
+        raise ValueError("Run manifest execution does not match its recorded cost estimate")
+
+    if source_execution == "batch":
+        target_input_price = source_input_price
+        target_output_price = source_output_price
+        target_pricing_as_of = source_cost.get("pricing_as_of")
+    else:
+        snapshot_path = run_dir / "project_snapshot" / "project.yaml"
+        if not snapshot_path.exists():
+            raise ValueError(f"Project snapshot not found at {snapshot_path}; cannot resolve batch pricing")
+        snapshot = load_config(snapshot_path)
+        target_input_price, target_output_price, target_pricing_as_of = token_prices(
+            snapshot, manifest["provider"], "batch"
+        )
+        if target_input_price is None or target_output_price is None:
+            raise ValueError(
+                "No asynchronous batch pricing is configured for "
+                f"{manifest['provider']}/{manifest['model_requested']}"
+            )
     if target_rows is None:
         target_rows = manifest["source_total_rows"]
     if target_rows <= 0:
@@ -1045,20 +1075,50 @@ def extrapolate_cost_from_run(run: str | Path, target_rows: int | None = None) -
     output_tokens = summary.get("output_tokens", 0)
     scale = target_rows / observed_rows
     has_attachments = (manifest.get("file_attachments") or {}).get("status") == "ready"
+    observed_usage_cost = (
+        input_tokens / 1_000_000 * source_input_price
+        + output_tokens / 1_000_000 * source_output_price
+    )
+    projected_input_tokens = round(input_tokens * scale)
+    projected_output_tokens = round(output_tokens * scale)
+    projected_cost = (
+        input_tokens * scale / 1_000_000 * target_input_price
+        + output_tokens * scale / 1_000_000 * target_output_price
+    )
+    limitations = [
+        "Configured token rates are applied to provider-reported aggregate tokens; "
+        "cached-token discounts and provider-specific billing adjustments are not "
+        "separately accounted for."
+    ]
+    if has_attachments:
+        limitations.append(
+            "Attached-file processing may be included in provider-reported input tokens, "
+            "but text and attachment usage cannot be separated."
+        )
     return {
         "source_run": str(run_dir),
         "observed_rows": observed_rows,
+        "observed_valid_rows": observed_valid_rows,
         "observed_input_tokens": input_tokens,
         "observed_output_tokens": output_tokens,
-        "observed_actual_cost_usd": actual_cost,
-        "per_row_cost_usd": actual_cost / observed_rows,
+        "observed_usage_cost_usd": observed_usage_cost,
+        "per_row_usage_cost_usd": observed_usage_cost / observed_rows,
+        "source_execution": source_execution,
+        "source_input_price_per_million": source_input_price,
+        "source_output_price_per_million": source_output_price,
+        "source_pricing_as_of": source_cost.get("pricing_as_of"),
+        "target_execution": "batch",
+        "target_input_price_per_million": target_input_price,
+        "target_output_price_per_million": target_output_price,
+        "target_pricing_as_of": target_pricing_as_of,
         "target_rows": target_rows,
-        "extrapolated_input_tokens": round(input_tokens * scale),
-        "extrapolated_output_tokens": round(output_tokens * scale),
-        "extrapolated_cost_usd": actual_cost * scale,
-        "pricing_as_of": summary.get("pricing_as_of"),
-        "excludes_file_input_cost": has_attachments,
-        "method": "scaled_from_actual_usage",
+        "extrapolated_input_tokens": projected_input_tokens,
+        "extrapolated_output_tokens": projected_output_tokens,
+        "extrapolated_cost_usd": projected_cost,
+        "has_file_attachments": has_attachments,
+        "usage_scope": "provider_reported_aggregate_tokens",
+        "limitations": limitations,
+        "method": "scaled_recorded_tokens_at_batch_rates",
     }
 
 

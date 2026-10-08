@@ -58,8 +58,8 @@ recovery guidance.
    * - ``estimate-cost``
      - ``kllm-batch estimate-cost RUN_DIR [--target-rows N]``
      - Local
-     - Project a realistic cost by scaling a processed run's actual token
-       usage; defaults to the project's full row count.
+     - Project an asynchronous batch cost by scaling a processed run's recorded
+       aggregate token usage; defaults to the project's full row count.
    * - ``retry``
      - ``kllm-batch retry RUN_DIR``
      - Local

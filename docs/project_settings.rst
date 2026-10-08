@@ -153,11 +153,15 @@ tokenizer count), and every request is assumed to use the full
 known in advance. Real spend is usually well below this ceiling. For a realistic forecast
 before preparing a full run, prepare and submit a small pilot
 (``--sample-size`` or ``--ids-file``), then run
-``kllm-batch estimate-cost PILOT_RUN_DIR`` — it scales the pilot's real
-provider-reported token usage (``run_reports/run_summary.json``
-``actual_usage_cost_usd``) by row count, defaulting to the project's full
-source row count. Pass ``--target-rows N`` to project to a different count
-instead.
+``kllm-batch estimate-cost PILOT_RUN_DIR`` — it scales the pilot's recorded
+provider-reported aggregate token usage by row count, defaulting to the
+project's full source row count. A default synchronous pilot is repriced at
+asynchronous batch rates; a pilot prepared with ``--execution batch`` retains
+its batch rates. Pass ``--target-rows N`` to project to a different count.
+The result applies configured token rates and is not an exact provider bill;
+cached-token adjustments and other provider-specific billing details are not
+separately retained. For runs with attached files, aggregate input usage may
+include file processing, but text and attachment usage cannot be separated.
 
 Common OpenAI options include ``temperature`` (0–2), ``top_p`` (0–1), and
 ``reasoning.effort``. Common Anthropic options include ``temperature`` (0–1),

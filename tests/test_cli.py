@@ -166,12 +166,14 @@ def test_estimate_cost_command_projects_from_pilot(example_config, tmp_path, mon
 
     result = runner.invoke(app, ["estimate-cost", str(pilot)])
     assert result.exit_code == 0
-    assert "Observed 3 row(s)" in result.stdout
-    assert "Projected to 10 row(s)" in result.stdout
+    assert "Source pilot: synchronous; projection: asynchronous batch pricing" in result.stdout
+    assert "Observed usage across 3 attempted row(s) (3 valid)" in result.stdout
+    assert "Projected asynchronous batch cost for 10 row(s)" in result.stdout
+    assert "not an exact provider bill" in " ".join(result.stdout.split())
 
     custom = runner.invoke(app, ["estimate-cost", str(pilot), "--target-rows", "100"])
     assert custom.exit_code == 0
-    assert "Projected to 100 row(s)" in custom.stdout
+    assert "Projected asynchronous batch cost for 100 row(s)" in custom.stdout
 
     not_processed = runner.invoke(
         app, ["prepare", "-c", str(config), "--provider", "openai", "--sample-size", "3", "--seed", "7"]

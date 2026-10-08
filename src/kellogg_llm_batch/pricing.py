@@ -13,12 +13,15 @@ PRICES: dict[tuple[str, str, str], tuple[float, float]] = {
 }
 
 
-def estimate_cost(config: ProjectConfig, provider: str, request_texts: list[str], execution: str = "batch") -> CostEstimate:
+def token_prices(
+    config: ProjectConfig,
+    provider: str,
+    execution: str,
+) -> tuple[float | None, float | None, str | None]:
+    """Resolve configured or built-in token prices for one execution mode."""
     if execution not in {"batch", "sync"}:
         raise ValueError(f"Unsupported execution mode: {execution}")
     settings = config.providers[provider]
-    input_tokens = sum(max(1, (len(text) + 3) // 4) for text in request_texts)
-    output_tokens = len(request_texts) * config.task.max_output_tokens
     if execution == "sync" and settings.sync_input_price_per_million is not None:
         prices = (settings.sync_input_price_per_million, settings.sync_output_price_per_million)
         as_of = "project.yaml sync override"
@@ -28,6 +31,17 @@ def estimate_cost(config: ProjectConfig, provider: str, request_texts: list[str]
     else:
         prices = PRICES.get((provider, settings.model, execution))
         as_of = PRICING_AS_OF if prices else None
+    if prices is None:
+        return None, None, as_of
+    return prices[0], prices[1], as_of
+
+
+def estimate_cost(config: ProjectConfig, provider: str, request_texts: list[str], execution: str = "batch") -> CostEstimate:
+    settings = config.providers[provider]
+    input_tokens = sum(max(1, (len(text) + 3) // 4) for text in request_texts)
+    output_tokens = len(request_texts) * config.task.max_output_tokens
+    input_price, output_price, as_of = token_prices(config, provider, execution)
+    prices = None if input_price is None or output_price is None else (input_price, output_price)
     usd = None if prices is None else input_tokens / 1_000_000 * prices[0] + output_tokens / 1_000_000 * prices[1]
     return CostEstimate(
         provider=provider,

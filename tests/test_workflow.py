@@ -132,15 +132,153 @@ def test_estimate_cost_extrapolates_from_actual_usage(example_config, tmp_path, 
 
     result = extrapolate_cost_from_run(pilot)
     assert result["observed_rows"] == 3
+    assert result["observed_valid_rows"] == 3
+    assert result["source_execution"] == "sync"
+    assert result["target_execution"] == "batch"
     assert result["target_rows"] == 10
-    assert result["observed_actual_cost_usd"] == pytest.approx(summary["actual_usage_cost_usd"])
-    assert result["extrapolated_cost_usd"] == pytest.approx(summary["actual_usage_cost_usd"] * 10 / 3)
+    assert result["observed_usage_cost_usd"] == pytest.approx(summary["actual_usage_cost_usd"])
+    assert result["target_input_price_per_million"] == pytest.approx(
+        result["source_input_price_per_million"] / 2
+    )
+    assert result["target_output_price_per_million"] == pytest.approx(
+        result["source_output_price_per_million"] / 2
+    )
     assert result["extrapolated_input_tokens"] == round(summary["input_tokens"] * 10 / 3)
-    assert result["excludes_file_input_cost"] is False
+    assert result["extrapolated_cost_usd"] == pytest.approx(
+        summary["input_tokens"] * 10 / 3 / 1_000_000 * result["target_input_price_per_million"]
+        + summary["output_tokens"] * 10 / 3 / 1_000_000 * result["target_output_price_per_million"]
+    )
+    assert result["has_file_attachments"] is False
+    assert result["usage_scope"] == "provider_reported_aggregate_tokens"
 
     custom = extrapolate_cost_from_run(pilot, target_rows=100)
     assert custom["target_rows"] == 100
-    assert custom["extrapolated_cost_usd"] == pytest.approx(summary["actual_usage_cost_usd"] * 100 / 3)
+    assert custom["extrapolated_cost_usd"] == pytest.approx(
+        summary["input_tokens"] * 100 / 3 / 1_000_000 * custom["target_input_price_per_million"]
+        + summary["output_tokens"] * 100 / 3 / 1_000_000 * custom["target_output_price_per_million"]
+    )
+
+
+def test_estimate_cost_from_small_batch_retains_batch_rates(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    config = _temporary_config(example_config, tmp_path)
+    pilot = prepare_run(config, "openai", sample_size=3, seed=1, execution="batch")
+    submit_run(pilot, fake)
+    sync_run(pilot, adapter=fake)
+
+    result = extrapolate_cost_from_run(pilot)
+
+    assert result["source_execution"] == "batch"
+    assert result["target_execution"] == "batch"
+    assert result["source_input_price_per_million"] == result["target_input_price_per_million"]
+    assert result["source_output_price_per_million"] == result["target_output_price_per_million"]
+    assert result["extrapolated_cost_usd"] == pytest.approx(
+        result["observed_usage_cost_usd"] * result["target_rows"] / result["observed_rows"]
+    )
+
+
+def test_sync_and_batch_pilots_project_same_batch_cost(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    config = _temporary_config(example_config, tmp_path)
+    sync_pilot = prepare_run(config, "openai", sample_size=3, seed=1, execution="sync")
+    batch_pilot = prepare_run(config, "openai", sample_size=3, seed=1, execution="batch")
+    submit_run(sync_pilot, fake)
+    submit_run(batch_pilot, fake)
+    sync_run(batch_pilot, adapter=fake)
+
+    sync_result = extrapolate_cost_from_run(sync_pilot)
+    batch_result = extrapolate_cost_from_run(batch_pilot)
+
+    assert sync_result["observed_input_tokens"] == batch_result["observed_input_tokens"]
+    assert sync_result["observed_output_tokens"] == batch_result["observed_output_tokens"]
+    assert sync_result["extrapolated_cost_usd"] == pytest.approx(batch_result["extrapolated_cost_usd"])
+
+
+def test_estimate_cost_uses_snapshot_price_overrides(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["providers"]["openai"].update(
+        input_price_per_million=9.0,
+        output_price_per_million=18.0,
+        sync_input_price_per_million=99.0,
+        sync_output_price_per_million=198.0,
+    )
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    pilot = prepare_run(config, "openai", sample_size=3, seed=1)
+    submit_run(pilot, fake)
+    raw["providers"]["openai"].update(
+        input_price_per_million=1.0,
+        output_price_per_million=2.0,
+    )
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    result = extrapolate_cost_from_run(pilot)
+
+    assert (result["source_input_price_per_million"], result["source_output_price_per_million"]) == (99.0, 198.0)
+    assert (result["target_input_price_per_million"], result["target_output_price_per_million"]) == (9.0, 18.0)
+    assert result["source_pricing_as_of"] == "project.yaml sync override"
+    assert result["target_pricing_as_of"] == "project.yaml override"
+
+
+def test_estimate_cost_scales_attempted_not_only_valid_rows(example_config, tmp_path, monkeypatch):
+    class PartlyInvalidAdapter(FakeAdapter):
+        def run_sync(self, payload):
+            outcome = super().run_sync(payload)
+            parsed = json.loads(outcome.response_text)
+            parsed["results"][0]["primary_label"] = "not-in-schema"
+            outcome.response_text = json.dumps(parsed)
+            return outcome
+
+    fake = PartlyInvalidAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    config = _temporary_config(example_config, tmp_path)
+    pilot = prepare_run(config, "openai", sample_size=3, seed=1)
+    submit_run(pilot, fake)
+
+    result = extrapolate_cost_from_run(pilot, target_rows=3)
+
+    assert result["observed_rows"] == 3
+    assert result["observed_valid_rows"] == 2
+    assert result["target_rows"] == 3
+    assert result["extrapolated_input_tokens"] == result["observed_input_tokens"]
+    assert result["extrapolated_output_tokens"] == result["observed_output_tokens"]
+
+
+def test_estimate_cost_rejects_invalid_execution_metadata(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    config = _temporary_config(example_config, tmp_path)
+    pilot = prepare_run(config, "openai", sample_size=3, seed=1)
+    submit_run(pilot, fake)
+    manifest_path = pilot / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["execution"] = "weekly"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="valid execution mode"):
+        extrapolate_cost_from_run(pilot)
+
+
+def test_estimate_cost_requires_batch_pricing(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["providers"]["openai"].update(
+        model="gpt-unreleased-model",
+        sync_input_price_per_million=99.0,
+        sync_output_price_per_million=198.0,
+    )
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    pilot = prepare_run(config, "openai", sample_size=3, seed=1)
+    submit_run(pilot, fake)
+
+    with pytest.raises(ValueError, match="No asynchronous batch pricing"):
+        extrapolate_cost_from_run(pilot)
 
 
 def test_estimate_cost_requires_processed_usage(example_config, tmp_path, monkeypatch):

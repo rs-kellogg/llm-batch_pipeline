@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from kellogg_llm_batch.config import load_config
-from kellogg_llm_batch.pricing import PRICES, estimate_cost
+from kellogg_llm_batch.pricing import PRICES, estimate_cost, token_prices
 from kellogg_llm_batch.scaffold import scaffold_project
 
 
@@ -85,3 +85,5 @@ def test_invalid_execution_mode_is_rejected(tmp_path):
     config = _config(tmp_path)
     with pytest.raises(ValueError, match="Unsupported execution mode"):
         estimate_cost(config, "openai", ["hello world"], "weekly")
+    with pytest.raises(ValueError, match="Unsupported execution mode"):
+        token_prices(config, "openai", "weekly")

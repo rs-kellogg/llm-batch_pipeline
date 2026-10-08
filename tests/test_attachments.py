@@ -14,7 +14,7 @@ import kellogg_llm_batch.attachments as attachment_module
 import kellogg_llm_batch.core as core
 from kellogg_llm_batch.attachments import attach_files_to_run
 from kellogg_llm_batch.cli import app
-from kellogg_llm_batch.core import prepare_retry, prepare_run, submit_run, sync_checkpoint_progress
+from kellogg_llm_batch.core import extrapolate_cost_from_run, prepare_retry, prepare_run, submit_run, sync_checkpoint_progress
 from kellogg_llm_batch.models import NormalizedResult
 from kellogg_llm_batch.providers.base import ProviderAdapter
 from kellogg_llm_batch.scaffold import scaffold_project
@@ -159,6 +159,10 @@ def test_attached_sync_pilot_processes_and_marks_cost_incomplete(tmp_path):
     assert summary["estimated_maximum_usd"] is None
     assert summary["text_only_estimate_usd"] == _manifest(run)["cost_estimate"]["estimated_usd"]
     assert summary["cost_estimate_scope"] == "text_only_excludes_files"
+    estimate = extrapolate_cost_from_run(run)
+    assert estimate["has_file_attachments"] is True
+    assert any("cannot be separated" in item for item in estimate["limitations"])
+    assert "excludes_file_input_cost" not in estimate
 
 
 @pytest.mark.parametrize("filename", ["", "missing.pdf", "../outside.pdf", "/tmp/outside.pdf", "bad.txt"])
