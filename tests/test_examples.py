@@ -65,7 +65,7 @@ def test_multisegment_example_prepares_five_segments(tmp_path, provider):
 
 @pytest.mark.parametrize("provider", ["openai", "anthropic"])
 def test_multisegment_retry_example_prepares_controlled_segments(tmp_path, provider):
-    example = _copy_example(tmp_path, "grant_coding") / "multisegment-retry"
+    example = _copy_example(tmp_path, "grant_coding_retry")
     config = example / "project.yaml"
 
     report = validate_project(config)
@@ -119,11 +119,10 @@ def test_multisegment_retry_example_prepares_controlled_segments(tmp_path, provi
         trigger_id in request_records_by_id[record_id]
         for record_id, trigger_id in trigger_by_record.items()
     )
-    assert (example / "schema.json").read_bytes() == (
-        example.parent / "schema.json"
-    ).read_bytes()
+    standard = REPOSITORY_ROOT / "examples" / "grant_coding"
+    assert (example / "schema.json").read_bytes() == (standard / "schema.json").read_bytes()
     assert (example / "context" / "codebook.csv").read_bytes() == (
-        example.parent / "context" / "codebook.csv"
+        standard / "context" / "codebook.csv"
     ).read_bytes()
 
 
@@ -178,7 +177,7 @@ class ControlledRetryAdapter(FakeAdapter):
 
 
 def test_multisegment_retry_complete_parent_child_merge(tmp_path, monkeypatch):
-    example = _copy_example(tmp_path, "grant_coding") / "multisegment-retry"
+    example = _copy_example(tmp_path, "grant_coding_retry")
     adapter = ControlledRetryAdapter()
     monkeypatch.setattr(core, "get_provider", lambda name: adapter)
 
@@ -319,7 +318,7 @@ def test_example_shell_scripts_are_valid_bash():
     scripts = sorted(
         (REPOSITORY_ROOT / "examples" / "grant_coding" / "multisegment").glob("*.sh")
     ) + sorted(
-        (REPOSITORY_ROOT / "examples" / "grant_coding" / "multisegment-retry").glob("*.sh")
+        (REPOSITORY_ROOT / "examples" / "grant_coding_retry").glob("*.sh")
     ) + sorted(
         (REPOSITORY_ROOT / "examples" / "grant_coding" / "walkthrough").glob("*.sh")
     ) + sorted(

@@ -9,7 +9,7 @@ confirmation steps while resolving project paths from the script location.
 Two larger manual smoke tests are also available. The
 [`multisegment/`](multisegment/README.md) example demonstrates staged range
 submission and cancellation. The
-[`multisegment-retry/`](multisegment-retry/README.md) example creates three
+[`grant_coding_retry/`](../grant_coding_retry/README.md) example creates three
 controlled missing outputs across five segments, retries only those records,
 and merges the recovered rows with the successful parent results.
 

@@ -27,13 +27,13 @@ do not print credentials or modify prepared request artifacts.
 From any directory, choose one provider:
 
 ```bash
-examples/grant_coding/multisegment-retry/prepare.sh openai
+examples/grant_coding_retry/prepare.sh openai
 ```
 
 or:
 
 ```bash
-examples/grant_coding/multisegment-retry/prepare.sh anthropic
+examples/grant_coding_retry/prepare.sh anthropic
 ```
 
 Preparation is local and free. Copy the complete run directory printed by the
@@ -43,11 +43,11 @@ files under `api_requests/`.
 ## 2. Submit and synchronize the parent
 
 ```bash
-examples/grant_coding/multisegment-retry/submit.sh PARENT_RUN_DIR
+examples/grant_coding_retry/submit.sh PARENT_RUN_DIR
 ```
 
 ```bash
-examples/grant_coding/multisegment-retry/sync.sh PARENT_RUN_DIR
+examples/grant_coding_retry/sync.sh PARENT_RUN_DIR
 ```
 
 `submit.sh` is the first paid operation. `sync.sh` waits for the five remote
@@ -56,7 +56,7 @@ batches, downloads available responses, normalizes them, and runs the audit.
 ## 3. Inspect the controlled failures
 
 ```bash
-examples/grant_coding/multisegment-retry/inspect-failures.sh PARENT_RUN_DIR
+examples/grant_coding_retry/inspect-failures.sh PARENT_RUN_DIR
 ```
 
 The expected outcome is:
@@ -74,7 +74,7 @@ were not omitted as intended. Review `outputs/failures.jsonl` and
 ## 4. Prepare and run the retry child
 
 ```bash
-examples/grant_coding/multisegment-retry/retry.sh PARENT_RUN_DIR
+examples/grant_coding_retry/retry.sh PARENT_RUN_DIR
 ```
 
 `retry.sh` is local and free. It prepares a child containing only retryable
@@ -84,11 +84,11 @@ child has one request containing the three controlled IDs. Inspect its
 JSONL before submission.
 
 ```bash
-examples/grant_coding/multisegment-retry/submit.sh CHILD_RUN_DIR
+examples/grant_coding_retry/submit.sh CHILD_RUN_DIR
 ```
 
 ```bash
-examples/grant_coding/multisegment-retry/sync.sh CHILD_RUN_DIR
+examples/grant_coding_retry/sync.sh CHILD_RUN_DIR
 ```
 
 The retry submit is another paid operation. The expected child audit is
@@ -97,11 +97,11 @@ complete with three valid records.
 ## 5. Merge and verify the chain
 
 ```bash
-examples/grant_coding/multisegment-retry/merge.sh CHILD_RUN_DIR
+examples/grant_coding_retry/merge.sh CHILD_RUN_DIR
 ```
 
 ```bash
-examples/grant_coding/multisegment-retry/verify-merged.sh CHILD_RUN_DIR
+examples/grant_coding_retry/verify-merged.sh CHILD_RUN_DIR
 ```
 
 Both commands are local. `merge` walks the parent chain and writes
@@ -118,14 +118,14 @@ If a child has another retryable failure, use that child as the parent of the
 next retry:
 
 ```bash
-examples/grant_coding/multisegment-retry/retry.sh NEWEST_CHILD_RUN_DIR
+examples/grant_coding_retry/retry.sh NEWEST_CHILD_RUN_DIR
 ```
 
 After submitting and synchronizing the new child, merge from the newest
 descendant so the command can walk the complete attempt chain:
 
 ```bash
-examples/grant_coding/multisegment-retry/merge.sh NEWEST_DESCENDANT_RUN_DIR
+examples/grant_coding_retry/merge.sh NEWEST_DESCENDANT_RUN_DIR
 ```
 
 If the provider ignores one or more controlled omissions, fewer than three

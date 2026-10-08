@@ -21,7 +21,7 @@ Retry failed records and merge the results
 ------------------------------------------
 
 The checked-in `multi-segment retry smoke-test example
-<https://github.com/rs-kellogg/llm-batch_pipeline/tree/main/examples/grant_coding/multisegment-retry>`_
+<https://github.com/rs-kellogg/llm-batch_pipeline/tree/main/examples/grant_coding_retry>`_
 provides provider-selectable scripts and controlled missing outputs for
 practicing this complete workflow without relying on an organic model failure.
 Its provider submissions still incur normal API usage.
