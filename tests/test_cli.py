@@ -65,11 +65,7 @@ def test_gui_command_explains_missing_dependency(tmp_path, monkeypatch):
     result = runner.invoke(app, ["gui", str(tmp_path / "project")])
     assert result.exit_code == 1
     assert "Streamlit is missing from this environment" in result.stdout
-    assert "python -m pip install" in result.stdout
-    assert (
-        "kellogg-llm-batch @ git+https://github.com/rs-kellogg/llm-batch_pipeline.git"
-        in " ".join(result.stdout.split())
-    )
+    assert "python -m pip install -e ." in " ".join(result.stdout.split())
 
 
 def test_gui_command_requires_initialized_project(tmp_path, monkeypatch):

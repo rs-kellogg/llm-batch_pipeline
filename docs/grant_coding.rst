@@ -10,9 +10,8 @@ to inspect or modify. ``kllm-batch init my-project`` creates a new project
 with the same ten grants and core project files, so you can practice this
 walkthrough before adapting your own project.
 
-The commands below assume you are in the root of a repository checkout. If you
-installed the command directly from GitHub, clone the repository to obtain the
-example files:
+The commands below assume you are in the root of the repository checkout
+created during :doc:`installation`. If needed, clone and install it first:
 
 .. code-block:: console
 

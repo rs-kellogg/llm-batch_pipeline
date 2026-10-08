@@ -15,15 +15,25 @@ with mamba:
    $ mamba create -n kllm-batch python=3.12 -y
    $ mamba activate kllm-batch
 
-Install from GitHub
--------------------
+Clone and install
+-----------------
 
-Install the current version directly from the public repository:
+Clone the public repository and install the local checkout in editable mode:
 
 .. code-block:: console
 
-   $ python -m pip install "kellogg-llm-batch @ git+https://github.com/rs-kellogg/llm-batch_pipeline.git"
+   $ git clone https://github.com/rs-kellogg/llm-batch_pipeline.git
+   $ cd llm-batch_pipeline
+   $ python -m pip install -e .
    $ kllm-batch --help
+
+To update the package later, pull the latest code from the same checkout. The
+editable installation uses the updated local source without requiring another
+package installation:
+
+.. code-block:: console
+
+   $ git pull
 
 The standard installation includes the local project builder. After creating
 a project, you can open it in your browser:
@@ -36,15 +46,13 @@ a project, you can open it in your browser:
 Using the GUI is optional. It binds only to ``127.0.0.1`` and does not call a
 provider. Preparation and provider operations remain CLI-only.
 
-Contributor installation
-------------------------
+Contributor tools
+-----------------
 
-For an editable checkout with tests and documentation tools:
+To add tests and documentation tools to the same editable checkout:
 
 .. code-block:: console
 
-   $ git clone https://github.com/rs-kellogg/llm-batch_pipeline.git
-   $ cd llm-batch_pipeline
    $ python -m pip install -e '.[dev,docs]'
    $ python -m pytest
 

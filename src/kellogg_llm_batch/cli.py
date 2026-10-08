@@ -79,8 +79,8 @@ def gui_command(
     if importlib.util.find_spec("streamlit") is None:
         console.print("[bold red]Streamlit is missing from this environment.[/bold red]")
         console.print(
-            'Reinstall the standard package with: python -m pip install '
-            '"kellogg-llm-batch @ git+https://github.com/rs-kellogg/llm-batch_pipeline.git"',
+            "From the repository checkout, reinstall the standard package with: "
+            "python -m pip install -e .",
             markup=False,
         )
         raise typer.Exit(1)

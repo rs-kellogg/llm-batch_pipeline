@@ -16,13 +16,16 @@ and `cancel` also contact the selected provider.
 
 ## Quick start
 
-Install directly from GitHub in a dedicated Python environment:
+Clone the repository and install it in editable mode inside a dedicated Python
+environment. Pulling later changes into the checkout immediately updates the
+installed command:
 
 ```bash
+git clone https://github.com/rs-kellogg/llm-batch_pipeline.git
+cd llm-batch_pipeline
 mamba create -n kllm-batch python=3.12 -y
 mamba activate kllm-batch
-python -m pip install \
-  "kellogg-llm-batch @ git+https://github.com/rs-kellogg/llm-batch_pipeline.git"
+python -m pip install -e .
 ```
 
 Create and validate a project, then prepare a small deterministic pilot:
