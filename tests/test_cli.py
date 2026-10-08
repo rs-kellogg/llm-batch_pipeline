@@ -216,7 +216,7 @@ def test_cancel_command_reports_errors_for_unknown_run(tmp_path):
     assert "Run not found" in result.stdout
 
 
-def test_submit_command_targets_repeated_segment_options(
+def test_submit_command_targets_segment_range(
     example_config, tmp_path, monkeypatch
 ):
     raw = yaml.safe_load(example_config.read_text())
@@ -235,32 +235,46 @@ def test_submit_command_targets_repeated_segment_options(
 
     submitted = runner.invoke(
         app,
-        ["submit", str(run), "--segment", "0", "--segment", "2"],
+        ["submit", str(run), "--seg_start", "0", "--seg_end", "2"],
         input="y\n",
     )
 
     assert submitted.exit_code == 0, submitted.stdout
-    assert "Submit batch segments 0, 2 containing 2 requests?" in submitted.stdout
+    normalized = " ".join(submitted.stdout.split())
+    assert "Requested range [0, 2) resolves to segments 0, 1" in normalized
+    assert "Submit batch segments 0, 1 containing 2 requests?" in normalized
     assert "full prepared run's estimated maximum cost" in submitted.stdout
     assert fake.submissions == 2
     assert [segment["status"] for segment in load_state(run)["segments"]] == [
         "submitted",
-        "prepared",
         "submitted",
+        "prepared",
         "prepared",
     ]
 
     repeated = runner.invoke(
         app,
-        ["submit", str(run), "--segment", "0", "--segment", "0", "--yes"],
+        ["submit", str(run), "--seg_start", "0", "--seg_end", "2", "--yes"],
     )
     assert repeated.exit_code == 0
     assert "already submitted" in repeated.stdout
     assert "No API requests were run" in " ".join(repeated.stdout.split())
     assert fake.submissions == 2
 
+    open_ended = runner.invoke(
+        app,
+        ["submit", str(run), "--seg_start", "2", "--seg_end", "-1"],
+        input="y\n",
+    )
+    assert open_ended.exit_code == 0, open_ended.stdout
+    assert "-1 means through end" in " ".join(open_ended.stdout.split())
+    assert fake.submissions == 4
+    assert all(
+        segment["status"] == "submitted" for segment in load_state(run)["segments"]
+    )
 
-def test_segment_cli_validation_happens_before_provider_calls(
+
+def test_segment_range_cli_validation_happens_before_provider_calls(
     example_config, tmp_path, monkeypatch
 ):
     raw = yaml.safe_load(example_config.read_text())
@@ -277,17 +291,39 @@ def test_segment_cli_validation_happens_before_provider_calls(
 
     batch_run = prepare_run(config, "openai", execution="batch")
     invalid = runner.invoke(
-        app, ["submit", str(batch_run), "--segment", "99", "--yes"]
+        app,
+        ["submit", str(batch_run), "--seg_start", "99", "--seg_end", "-1", "--yes"],
     )
     assert invalid.exit_code == 1
-    assert "Unknown segment indexes" in invalid.stdout
+    assert "outside the available indexes" in invalid.stdout
+    assert fake.submissions == 0
+
+    missing_end = runner.invoke(
+        app, ["submit", str(batch_run), "--seg_start", "0", "--yes"]
+    )
+    assert missing_end.exit_code == 1
+    assert "must be provided together" in missing_end.stdout
+    assert fake.submissions == 0
+
+    missing_start = runner.invoke(
+        app, ["submit", str(batch_run), "--seg_end", "-1", "--yes"]
+    )
+    assert missing_start.exit_code == 1
+    assert "must be provided together" in missing_start.stdout
+    assert fake.submissions == 0
+
+    removed_option = runner.invoke(
+        app, ["submit", str(batch_run), "--segment", "0", "--yes"]
+    )
+    assert removed_option.exit_code != 0
     assert fake.submissions == 0
 
     sync_run_dir = prepare_run(
         config, "openai", sample_size=4, seed=42, execution="sync"
     )
     synchronous = runner.invoke(
-        app, ["submit", str(sync_run_dir), "--segment", "0", "--yes"]
+        app,
+        ["submit", str(sync_run_dir), "--seg_start", "0", "--seg_end", "1", "--yes"],
     )
     assert synchronous.exit_code == 1
     assert "available only for batch runs" in synchronous.stdout
@@ -319,10 +355,12 @@ def test_cancel_command_targets_one_segment(
     adapter = RecordingAdapter()
     monkeypatch.setattr(core, "get_provider", lambda name: adapter)
     run = prepare_run(config, "openai", execution="batch")
-    submit_run(run, adapter, segment_indices={0, 1})
+    submit_run(run, adapter, segment_range=(0, 2))
     target_batch_id = load_state(run)["segments"][1]["remote_batch_id"]
 
-    result = runner.invoke(app, ["cancel", str(run), "--segment", "1"])
+    result = runner.invoke(
+        app, ["cancel", str(run), "--seg_start", "1", "--seg_end", "2"]
+    )
 
     assert result.exit_code == 0, result.stdout
     assert adapter.cancelled == [target_batch_id]

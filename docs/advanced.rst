@@ -259,19 +259,25 @@ Stage batch segments
 ~~~~~~~~~~~~~~~~~~~~
 
 Preparation numbers segments from zero in the same order shown by ``status``
-and used in filenames such as ``segment_0000.jsonl``. To submit only selected
-remote batch jobs, repeat ``--segment``:
+and used in filenames such as ``segment_0000.jsonl``. To submit a contiguous
+half-open range of remote batch jobs, provide both range options:
 
 .. code-block:: console
 
-   $ kllm-batch submit RUN_DIR --segment 0 --segment 2
+   $ kllm-batch submit RUN_DIR --seg_start 0 --seg_end 2
 
-The confirmation reports the selected segment indexes and request count. It
+The range ``[0, 2)`` includes segments 0 and 1 because ``--seg_end`` is
+exclusive. Use ``--seg_end -1`` to continue from ``--seg_start`` through the
+final segment. The two options must be provided together. The confirmation
+reports the requested range, resolved segment indexes, and request count. It
 retains the full prepared-run cost estimate as a conservative ceiling rather
-than presenting an inaccurate prorated estimate. Segments not selected remain
-``prepared``. A later command can submit another subset, while omitting
-``--segment`` submits every remaining eligible segment. Repeating a submission
-for a segment that already has a remote batch ID is an idempotent no-op.
+than presenting an inaccurate prorated estimate.
+
+Segments outside the range remain ``prepared``. A later command can submit
+another range, while omitting both options submits every remaining unsubmitted
+segment. Segments with remote batch IDs, including completed segments, are
+skipped and are not rerun. Repeating a submission for an already submitted
+range is therefore an idempotent no-op.
 
 ``status`` and ``sync`` continue to operate across the run, contacting only
 segments with remote jobs. This permits a staged workflow: submit a subset,
@@ -283,14 +289,15 @@ Target cancellation the same way:
 
 .. code-block:: console
 
-   $ kllm-batch cancel RUN_DIR --segment 2
+   $ kllm-batch cancel RUN_DIR --seg_start 2 --seg_end -1
 
-Omitting ``--segment`` requests cancellation for every submitted or running
-segment. Omitted prepared segments remain available for later submission, and
-the run becomes fully ``cancelled`` only when all its segments are cancelled.
-Provider work completed before cancellation may still be billable. Segment
-selection is limited to batch execution; synchronous pilots resume from their
-per-request checkpoints instead of creating remote segment jobs.
+Omitting both range options requests cancellation for every submitted or
+running segment. Completed and prepared segments are skipped. Prepared segments
+outside the range remain available for later submission, and the run becomes
+fully ``cancelled`` only when all its segments are cancelled. Provider work
+completed before cancellation may still be billable. Segment ranges are
+limited to batch execution; synchronous pilots resume from their per-request
+checkpoints instead of creating remote segment jobs.
 
 Understand artifacts and provenance
 -----------------------------------

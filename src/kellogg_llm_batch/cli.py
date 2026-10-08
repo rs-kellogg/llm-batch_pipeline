@@ -37,6 +37,14 @@ def _fail(exc: Exception) -> None:
     raise typer.Exit(1)
 
 
+def _segment_range(seg_start: int | None, seg_end: int | None) -> tuple[int, int] | None:
+    if (seg_start is None) != (seg_end is None):
+        raise ValueError("--seg_start and --seg_end must be provided together")
+    if seg_start is None or seg_end is None:
+        return None
+    return seg_start, seg_end
+
+
 @app.command("init")
 def init_command(directory: Path = typer.Argument(..., help="Empty directory to scaffold.")):
     """Create a synthetic grant-coding project with data, codebook, prompts, and schema.
@@ -200,19 +208,23 @@ def prepare_command(
 def submit_command(
     run: Path = typer.Argument(..., help="Run directory printed by prepare."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm submission non-interactively."),
-    segment: Optional[list[int]] = typer.Option(
+    seg_start: Optional[int] = typer.Option(
         None,
-        "--segment",
-        min=0,
-        help="Zero-based batch segment index to submit; repeat to select several segments.",
+        "--seg_start",
+        help="First zero-based batch segment in the range.",
+    ),
+    seg_end: Optional[int] = typer.Option(
+        None,
+        "--seg_end",
+        help="Exclusive segment range end; use -1 for the final segment.",
     ),
 ):
     """Execute an inspected run using its recorded sync or batch mode.
 
-    Example: `kllm-batch submit RUN_DIR --segment 0 --segment 2`; omit
-    `--segment` to submit every eligible segment. Use `--yes` only in reviewed
-    automation. Requires the provider API key and can incur cost. Synchronous
-    runs process immediately and do not accept segment selection.
+    Example: `kllm-batch submit RUN_DIR --seg_start 0 --seg_end 2` submits
+    segments 0 and 1. Use `--seg_end -1` to continue through the final segment.
+    Omit both range options to submit every eligible segment. Requires the
+    provider API key and can incur cost.
     """
     try:
         run_dir = resolve_run(run)
@@ -224,10 +236,10 @@ def submit_command(
         estimate = manifest["cost_estimate"]["estimated_usd"]
         mode = manifest.get("execution", "batch")
         request_count = manifest["request_count"]
-        segment_indices = set(segment) if segment is not None else None
-        if mode == "sync" and segment_indices is not None:
+        segment_range = _segment_range(seg_start, seg_end)
+        if mode == "sync" and segment_range is not None:
             raise ValueError(
-                "--segment is available only for batch runs; synchronous runs resume "
+                "Segment ranges are available only for batch runs; synchronous runs resume "
                 "from per-request checkpoints"
             )
         confirmation_count = request_count
@@ -298,7 +310,7 @@ def submit_command(
                 )
         batch_summary = None
         if mode == "batch":
-            batch_summary = batch_submission_summary(run_dir, segment_indices)
+            batch_summary = batch_submission_summary(run_dir, segment_range)
             confirmation_count = batch_summary["request_count"]
             if confirmation_count == 0:
                 indexes = batch_summary["selected_segment_indexes"]
@@ -312,24 +324,40 @@ def submit_command(
         qualifier = " remaining" if mode == "sync" and confirmation_count < request_count else ""
         cost_qualifier = " remaining" if qualifier else ""
         partial_batch = mode == "batch" and (
-            segment_indices is not None or confirmation_count < request_count
+            segment_range is not None or confirmation_count < request_count
         )
         if partial_batch:
             indexes = batch_summary["pending_segment_indexes"]
             segment_noun = "segment" if len(indexes) == 1 else "segments"
             index_text = ", ".join(str(index) for index in indexes)
+            range_text = ""
+            if segment_range is not None:
+                start, end = segment_range
+                range_label = (
+                    f"[{start}, -1] (-1 means through end)"
+                    if end == -1
+                    else f"[{start}, {end})"
+                )
+                selected_text = ", ".join(
+                    str(index) for index in batch_summary["selected_segment_indexes"]
+                )
+                range_text = (
+                    f"Requested range {range_label} resolves to segments "
+                    f"{selected_text}. "
+                )
             if attached:
                 console.print(
                     f"[bold yellow]File input cost is unknown.[/bold yellow] The prepared ${estimate:.4f} "
                     "estimate covers text only; the configured budget does not cap file processing cost."
                 )
                 question = (
-                    f"Submit batch {segment_noun} {index_text} containing "
+                    f"{range_text}Submit batch {segment_noun} {index_text} containing "
                     f"{confirmation_count} {noun} with unknown total cost?"
                 )
             else:
                 question = (
-                    f"Submit batch {segment_noun} {index_text} containing {confirmation_count} {noun}? "
+                    f"{range_text}Submit batch {segment_noun} {index_text} containing "
+                    f"{confirmation_count} {noun}? "
                     f"The full prepared run's estimated maximum cost is ${estimate:.4f}; "
                     "this subset is smaller."
                 )
@@ -355,7 +383,7 @@ def submit_command(
         state = submit_run(
             run_dir,
             progress_callback=print_sync_progress if mode == "sync" else None,
-            segment_indices=segment_indices,
+            segment_range=segment_range,
         )
         action = "Processed" if mode == "sync" else "Submitted"
         console.print(f"{action} run {state['run_id']} — {state['status']}")
@@ -461,25 +489,30 @@ def sync_command(
 @app.command("cancel")
 def cancel_command(
     run: Path = typer.Argument(..., help="Run directory."),
-    segment: Optional[list[int]] = typer.Option(
+    seg_start: Optional[int] = typer.Option(
         None,
-        "--segment",
-        min=0,
-        help="Zero-based batch segment index to cancel; repeat to select several segments.",
+        "--seg_start",
+        help="First zero-based batch segment in the range.",
+    ),
+    seg_end: Optional[int] = typer.Option(
+        None,
+        "--seg_end",
+        help="Exclusive segment range end; use -1 for the final segment.",
     ),
 ):
     """Cancel submitted or running remote jobs without deleting artifacts.
 
-    Example: `kllm-batch cancel RUN_DIR --segment 2`; omit `--segment` to
-    cancel every eligible remote batch job. Requires the provider API key.
-    Work already processed by the provider may still be billable; run `sync`
-    later if partial results become available.
+    Example: `kllm-batch cancel RUN_DIR --seg_start 2 --seg_end -1` cancels
+    eligible remote jobs from segment 2 through the end. Omit both range
+    options to cancel every eligible remote batch job. Requires the provider
+    API key. Work already processed by the provider may still be billable.
     """
     try:
+        segment_range = _segment_range(seg_start, seg_end)
         _print_state(
             cancel_run(
                 run,
-                segment_indices=set(segment) if segment is not None else None,
+                segment_range=segment_range,
             )
         )
     except Exception as exc:

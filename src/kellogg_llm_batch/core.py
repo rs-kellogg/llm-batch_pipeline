@@ -11,7 +11,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, Callable, Collection
+from typing import Any, Callable
 
 import pandas as pd
 from jsonschema import Draft202012Validator
@@ -516,26 +516,41 @@ def _execute_sync_requests(
 
 def _select_segments(
     state: dict[str, Any],
-    segment_indices: Collection[int] | None,
+    segment_range: tuple[int, int] | None,
 ) -> list[dict[str, Any]]:
     segments = state["segments"]
-    if segment_indices is None:
+    if segment_range is None:
         return segments
-    requested = set(segment_indices)
-    invalid_values = sorted(
-        value
-        for value in requested
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0
-    )
-    if invalid_values:
-        raise ValueError(f"Segment indexes must be nonnegative integers: {invalid_values}")
-    available = {segment["index"] for segment in segments}
-    unknown = sorted(requested - available)
-    if unknown:
+    if (
+        len(segment_range) != 2
+        or any(isinstance(value, bool) or not isinstance(value, int) for value in segment_range)
+    ):
+        raise ValueError("Segment range must contain exactly two integer values: (start, end)")
+    start, end = segment_range
+    segment_count = len(segments)
+    if start < 0:
+        raise ValueError(f"Segment range start must be nonnegative; received {start}")
+    if start >= segment_count:
         raise ValueError(
-            f"Unknown segment indexes: {unknown}; available indexes are {sorted(available)}"
+            f"Segment range start {start} is outside the available indexes "
+            f"0 through {segment_count - 1}"
         )
-    return [segment for segment in segments if segment["index"] in requested]
+    if end < -1:
+        raise ValueError(f"Segment range end must be -1 or nonnegative; received {end}")
+    resolved_end = segment_count if end == -1 else end
+    if resolved_end <= start:
+        raise ValueError(
+            f"Segment range end must be greater than start; received [{start}, {end})"
+        )
+    if resolved_end > segment_count:
+        raise ValueError(
+            f"Segment range end {end} exceeds the segment count {segment_count}"
+        )
+    return [
+        segment
+        for segment in segments
+        if start <= segment["index"] < resolved_end
+    ]
 
 
 def _validate_submit_targets(
@@ -603,22 +618,22 @@ def _refresh_run_status(state: dict[str, Any]) -> None:
 
 def batch_submission_summary(
     run: str | Path,
-    segment_indices: Collection[int] | None = None,
+    segment_range: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     """Summarize the batch work a submit call would start without provider calls."""
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
     if manifest.get("execution", "batch") == "sync":
-        if segment_indices is not None:
+        if segment_range is not None:
             raise ValueError(
-                "--segment is available only for batch runs; synchronous runs resume "
+                "Segment ranges are available only for batch runs; synchronous runs resume "
                 "from per-request checkpoints"
             )
         raise ValueError("Submission summaries apply only to batch runs")
     _verify_prepared_artifacts(run_dir, manifest)
     state = load_state(run_dir)
-    selected = _select_segments(state, segment_indices)
-    _validate_submit_targets(selected, explicit=segment_indices is not None)
+    selected = _select_segments(state, segment_range)
+    _validate_submit_targets(selected, explicit=segment_range is not None)
     pending = [segment for segment in selected if not segment.get("remote_batch_id")]
     request_count = 0
     for segment in pending:
@@ -627,6 +642,7 @@ def batch_submission_summary(
         ) as handle:
             request_count += sum(1 for line in handle if line.strip())
     return {
+        "requested_segment_range": list(segment_range) if segment_range is not None else None,
         "selected_segment_indexes": [segment["index"] for segment in selected],
         "pending_segment_indexes": [segment["index"] for segment in pending],
         "already_submitted_indexes": [
@@ -641,23 +657,23 @@ def submit_run(
     adapter: ProviderAdapter | None = None,
     progress_callback: Callable[[int, int, NormalizedResult], None] | None = None,
     *,
-    segment_indices: Collection[int] | None = None,
+    segment_range: tuple[int, int] | None = None,
 ) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
     adapter = adapter or get_provider(manifest["provider"])
     _verify_prepared_artifacts(run_dir, manifest)
     if manifest.get("execution", "batch") == "sync":
-        if segment_indices is not None:
+        if segment_range is not None:
             raise ValueError(
-                "Segment selection is available only for batch runs; synchronous runs "
+                "Segment ranges are available only for batch runs; synchronous runs "
                 "resume from per-request checkpoints"
             )
         return _execute_sync_requests(run_dir, manifest, adapter, progress_callback)
     with RunLock(run_dir):
         state = load_state(run_dir)
-        selected = _select_segments(state, segment_indices)
-        _validate_submit_targets(selected, explicit=segment_indices is not None)
+        selected = _select_segments(state, segment_range)
+        _validate_submit_targets(selected, explicit=segment_range is not None)
         if state.get("status") in {"completed", "completed_with_failures", "cancelled"}:
             return state
         submitted_any = False
@@ -706,20 +722,20 @@ def cancel_run(
     run: str | Path,
     adapter: ProviderAdapter | None = None,
     *,
-    segment_indices: Collection[int] | None = None,
+    segment_range: tuple[int, int] | None = None,
 ) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
-    if manifest.get("execution", "batch") == "sync" and segment_indices is not None:
+    if manifest.get("execution", "batch") == "sync" and segment_range is not None:
         raise ValueError(
-            "Segment selection is available only for batch runs; synchronous runs do not "
+            "Segment ranges are available only for batch runs; synchronous runs do not "
             "create remote segment jobs"
         )
     adapter = adapter or get_provider(manifest["provider"])
     with RunLock(run_dir):
         state = load_state(run_dir)
-        selected = _select_segments(state, segment_indices)
-        _validate_cancel_targets(selected, explicit=segment_indices is not None)
+        selected = _select_segments(state, segment_range)
+        _validate_cancel_targets(selected, explicit=segment_range is not None)
         for segment in selected:
             if segment["remote_batch_id"] and segment["status"] in {"submitted", "running"}:
                 try:
