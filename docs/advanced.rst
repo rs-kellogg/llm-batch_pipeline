@@ -20,6 +20,12 @@ For an optional, separate PNG/PDF input step after preparation, see
 Retry failed records and merge the results
 ------------------------------------------
 
+The checked-in `multi-segment retry smoke-test example
+<https://github.com/rs-kellogg/llm-batch_pipeline/tree/main/examples/grant_coding/multisegment-retry>`_
+provides provider-selectable scripts and controlled missing outputs for
+practicing this complete workflow without relying on an organic model failure.
+Its provider submissions still incur normal API usage.
+
 Use a retry chain when ``outputs/failures.jsonl`` contains retryable provider,
 request, malformed-output, schema, or missing-output failures. The original
 run and its raw responses remain unchanged.
