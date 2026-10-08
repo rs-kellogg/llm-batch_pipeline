@@ -77,3 +77,8 @@ run but does not attach files automatically. Run ``attach-files`` on the child
 with the same column and directory before submitting it. Submission refuses a
 retry child until the required files are attached, and the files must match
 their parent-run checksums. See :ref:`retries-and-reruns` for merging results.
+
+The checked-in `job-post attachment example
+<https://github.com/rs-kellogg/llm-batch_pipeline/tree/main/examples/job_post_attachments>`_
+provides four small PDF/PNG inputs, a structured extraction schema, and guarded
+scripts for running the same smoke test with either provider.

@@ -1,0 +1,65 @@
+version: 1
+
+project:
+  name: grant-topic-coding-multisegment
+  description: Exercise staged submission and cancellation with five synthetic batch segments.
+
+input:
+  path: data/multi-segment-input.csv
+  format: csv
+  id_column: grant_id
+  csv_encoding: utf-8
+  fields_sent:
+    project_title: project_title
+    abstract: abstract
+  columns_preserved:
+    - year
+    - investigator
+    - source_file
+  required_fields:
+    - abstract
+  missing_required: error
+  field_limits:
+    abstract:
+      overflow: error
+
+task:
+  rows_per_request: 1
+  output_schema: schema.json
+  max_input_tokens: 50000
+  max_output_tokens: 1200
+
+prompt:
+  version: "1.0"
+  system_file: prompts/system.txt
+  user_file: prompts/user.txt
+  context:
+    codebook:
+      path: context/codebook.csv
+      format: csv
+
+providers:
+  openai:
+    model: gpt-5-mini
+    max_requests_per_batch: 5
+    options:
+      reasoning:
+        effort: low
+  anthropic:
+    model: claude-haiku-4-5
+    max_requests_per_batch: 5
+    options:
+      temperature: 0
+
+budget:
+  max_estimated_usd: 5.0
+
+evaluation:
+  random_seed: 42
+  gold_columns:
+    primary_label: reference_primary_label
+
+output:
+  write_parquet: true
+  write_csv: true
+  runs_directory: runs/multisegment

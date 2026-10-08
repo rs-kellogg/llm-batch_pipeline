@@ -1,0 +1,5 @@
+Read the attached job posting and extract the requested fields for this record:
+
+${records_json}
+
+The source may be a multi-page PDF or a PNG screenshot. Note incomplete, duplicated, or unreadable content in source_quality_notes.

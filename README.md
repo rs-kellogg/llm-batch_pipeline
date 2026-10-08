@@ -50,6 +50,11 @@ Never commit API keys or place them in `project.yaml`. See the
 for the complete pilot and batch process, or start with the worked
 [grant-coding example](examples/grant_coding/README.md).
 
+For concrete provider smoke tests, use the guarded
+[multi-segment scripts](examples/grant_coding/multisegment/README.md) or the
+[PDF/PNG job-post example](examples/job_post_attachments/README.md). These
+examples keep preparation separate from paid submission.
+
 ## Development
 
 Clone the repository and install the development and documentation extras:

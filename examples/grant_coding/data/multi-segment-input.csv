@@ -1,0 +1,25 @@
+grant_id,project_title,abstract,year,investigator,source_file,reference_primary_label
+MULTI-001,Team learning after product failures,Studies how teams update routines and coordinate work after unsuccessful product launches.,2025,Alex Rivera,multi_segment_synthetic.csv,organizational
+MULTI-002,Transparent pricing in digital markets,Tests how disclosure of seller fees changes consumer search and market prices.,2025,Morgan Lee,multi_segment_synthetic.csv,financial
+MULTI-003,Efficient models for document classification,Develops compact machine-learning methods for classifying large collections of research documents.,2026,Sam Patel,multi_segment_synthetic.csv,technical
+MULTI-004,Leadership transitions and employee voice,Examines whether leadership succession changes employees' willingness to raise operational concerns.,2026,Jordan Kim,multi_segment_synthetic.csv,organizational
+MULTI-005,Investor attention during earnings calls,Measures how shifts in investor attention affect reactions to corporate earnings disclosures.,2025,Taylor Brooks,multi_segment_synthetic.csv,financial
+MULTI-006,Auditing data pipelines at scale,Creates technical methods to detect schema drift and missing records in large data pipelines.,2026,Casey Nguyen,multi_segment_synthetic.csv,technical
+MULTI-007,Community gardens and neighborhood trust,Evaluates whether shared garden programs strengthen trust among urban neighbors.,2025,Riley Chen,multi_segment_synthetic.csv,other
+MULTI-008,Coordination in hybrid work groups,Studies communication routines and coordination quality in teams working across office and remote settings.,2026,Drew Williams,multi_segment_synthetic.csv,organizational
+MULTI-009,Forecasting liquidity with alternative data,Builds forecasting models that use transaction signals to estimate market liquidity.,2026,Jamie Ortiz,multi_segment_synthetic.csv,financial
+MULTI-010,Secure storage for collaborative analytics,Designs privacy-preserving storage systems for researchers sharing large analytical datasets.,2025,Avery Johnson,multi_segment_synthetic.csv,technical
+MULTI-011,Peer mentoring in new ventures,Tests whether structured peer mentoring improves role clarity and retention in early-stage companies.,2026,Cameron Shah,multi_segment_synthetic.csv,organizational
+MULTI-012,Credit access for neighborhood retailers,Measures how changes in lending standards affect investment by small urban retailers.,2025,Robin Ellis,multi_segment_synthetic.csv,financial
+MULTI-013,Robust extraction from scanned reports,Develops vision-language methods for extracting structured tables from noisy scanned documents.,2026,Emerson Park,multi_segment_synthetic.csv,technical
+MULTI-014,Public art and pedestrian activity,Examines whether temporary public art installations change pedestrian use of commercial corridors.,2025,Quinn Foster,multi_segment_synthetic.csv,other
+MULTI-015,Board expertise and acquisition decisions,Studies how directors' industry expertise shapes acquisition screening and post-merger oversight.,2026,Parker Lewis,multi_segment_synthetic.csv,organizational
+MULTI-016,Household responses to overdraft fees,Estimates how fee disclosures influence account balances and short-term borrowing decisions.,2025,Hayden Moore,multi_segment_synthetic.csv,financial
+MULTI-017,Detecting drift in clinical classifiers,Creates monitoring methods that identify performance drift in deployed clinical prediction systems.,2026,Reese Taylor,multi_segment_synthetic.csv,technical
+MULTI-018,Library programs and digital inclusion,Evaluates community library training programs intended to improve access to online public services.,2025,Skyler Davis,multi_segment_synthetic.csv,other
+MULTI-019,Manager feedback and process improvement,Tests how the timing and specificity of manager feedback affect employee process improvements.,2026,Finley Martin,multi_segment_synthetic.csv,organizational
+MULTI-020,Market reactions to climate disclosures,Measures investor responses to standardized corporate climate-risk disclosures.,2025,Dakota Clark,multi_segment_synthetic.csv,financial
+MULTI-021,Energy-efficient distributed training,Develops scheduling algorithms that reduce energy use during distributed machine-learning training.,2026,Rowan Baker,multi_segment_synthetic.csv,technical
+MULTI-022,Transit reliability and job access,Studies how bus service reliability affects access to employment opportunities across neighborhoods.,2025,Kendall Young,multi_segment_synthetic.csv,other
+MULTI-023,Cross-functional routines in product teams,Examines how recurring cross-functional meetings influence product development speed and conflict resolution.,2026,Marley Scott,multi_segment_synthetic.csv,organizational
+MULTI-024,Real-time detection of payment fraud,Builds interpretable streaming models for identifying fraudulent electronic payment transactions.,2026,Arden Hall,multi_segment_synthetic.csv,technical

@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "job_title": {
+      "type": ["string", "null"]
+    },
+    "employer": {
+      "type": ["string", "null"]
+    },
+    "location": {
+      "type": ["string", "null"]
+    },
+    "employment_type": {
+      "type": ["string", "null"]
+    },
+    "salary_text": {
+      "type": ["string", "null"]
+    },
+    "education_requirements": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "experience_requirements": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "responsibilities": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "qualifications": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "source_quality_notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_title",
+    "employer",
+    "location",
+    "employment_type",
+    "salary_text",
+    "education_requirements",
+    "experience_requirements",
+    "responsibilities",
+    "qualifications",
+    "source_quality_notes"
+  ],
+  "additionalProperties": false
+}

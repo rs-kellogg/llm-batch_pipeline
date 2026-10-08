@@ -1,0 +1,55 @@
+version: 1
+
+project:
+  name: job-post-attachment-extraction
+  description: Extract structured job information from local PDF and PNG attachments.
+
+input:
+  path: data/input-data.csv
+  format: csv
+  id_column: job_id
+  csv_encoding: utf-8
+  fields_sent:
+    source_label: source_label
+    source_format: source_format
+  columns_preserved:
+    - attachment_file
+  required_fields:
+    - source_label
+    - source_format
+  missing_required: error
+
+task:
+  rows_per_request: 1
+  output_schema: schema.json
+  max_input_tokens: 50000
+  max_output_tokens: 1800
+
+prompt:
+  version: "1.0"
+  system_file: prompts/system.txt
+  user_file: prompts/user.txt
+
+providers:
+  openai:
+    model: gpt-5-mini
+    max_requests_per_batch: 2
+    options:
+      reasoning:
+        effort: low
+  anthropic:
+    model: claude-haiku-4-5
+    max_requests_per_batch: 2
+    options:
+      temperature: 0
+
+budget:
+  max_estimated_usd: 5.0
+
+evaluation:
+  random_seed: 42
+
+output:
+  write_parquet: true
+  write_csv: true
+  runs_directory: runs
