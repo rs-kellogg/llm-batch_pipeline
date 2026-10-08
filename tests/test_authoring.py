@@ -74,9 +74,7 @@ def test_new_gui_draft_keeps_generic_schema(tmp_path):
     assert draft.config["providers"]["openai"]["options"] == {
         "reasoning": {"effort": "low"}
     }
-    assert draft.config["providers"]["anthropic"]["options"] == {
-        "temperature": 0
-    }
+    assert "options" not in draft.config["providers"]["anthropic"]
 
 
 def test_provider_options_json_editor_parser():

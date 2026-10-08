@@ -129,8 +129,6 @@ Providers and budget
            effort: low
      anthropic:
        model: claude-haiku-4-5
-       options:
-         temperature: 0
 
    budget:
      max_estimated_usd: 5.0
@@ -141,8 +139,8 @@ Providers and budget
   variables, not this file.
 * ``options`` — provider-native generation settings copied into every request
   for that provider. The starter uses low reasoning effort for the OpenAI
-  reasoning model and temperature zero for Claude Haiku 4.5. Omitting
-  ``options`` uses the provider and model defaults.
+  reasoning model and leaves Anthropic options unset, so Claude uses the
+  provider and model defaults. Omitting ``options`` is valid.
 * ``budget.max_estimated_usd`` — blocks a run whose estimated maximum cost
   exceeds this ceiling.
 
@@ -164,19 +162,16 @@ separately retained. For runs with attached files, aggregate input usage may
 include file processing, but text and attachment usage cannot be separated.
 
 Common OpenAI options include ``temperature`` (0–2), ``top_p`` (0–1), and
-``reasoning.effort``. Common Anthropic options include ``temperature`` (0–1),
-``top_p`` (0–1), ``top_k`` (a nonnegative integer), and ``stop_sequences`` (an
-array of strings). Unknown provider-native keys pass through so that new API
-features do not require an immediate package release. ``validate`` checks
-known value ranges and warns when both ``temperature`` and ``top_p`` are set;
-provider guidance recommends changing one sampling control at a time.
-
-Option support also depends on the selected model. Some OpenAI reasoning
-configurations restrict sampling controls, and Claude 4.7 and later models do
-not support ``temperature``, ``top_p``, or ``top_k``. Remove incompatible
-options when changing models. A temperature of zero can improve sampling
-consistency on supported Claude models, but it does not make responses fully
-deterministic.
+``reasoning.effort``. Current Anthropic controls include options such as
+``service_tier``, ``stop_sequences``, and model-compatible ``thinking``
+configuration. The exact Anthropic parameters change with the selected model
+and installed SDK, so consult the current provider documentation before adding
+them; the starter deliberately sets none. Unknown provider-native keys pass
+through so that new API features do not require an immediate package release.
+``validate`` checks known value shapes and ranges but cannot guarantee that a
+particular model and SDK combination accepts an option. It warns when both
+``temperature`` and ``top_p`` are set; provider guidance recommends changing
+one sampling control at a time.
 
 ``seed`` is not a supported option for the OpenAI Responses or Anthropic
 Messages endpoints used here. ``evaluation.random_seed`` below, and the

@@ -40,8 +40,6 @@ providers:
   anthropic:
     model: claude-haiku-4-5
     max_requests_per_batch: 2
-    options:
-      temperature: 0
 
 budget:
   max_estimated_usd: 5.0

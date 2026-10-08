@@ -48,6 +48,14 @@ def test_multisegment_example_prepares_five_segments(tmp_path, provider):
     assert manifest["request_count"] == 24
     assert manifest["segment_count"] == 5
     assert request_counts == [5, 5, 5, 5, 4]
+    if provider == "anthropic":
+        assert manifest["provider_options"] == {}
+        payloads = [
+            payload
+            for path in sorted((run / "api_requests").glob("segment_*.jsonl"))
+            for payload in ProviderAdapter.read_jsonl(path)
+        ]
+        assert all("temperature" not in payload["params"] for payload in payloads)
 
 
 def _expected_attachment_hashes(example: Path) -> dict[str, str]:
@@ -89,6 +97,13 @@ def test_job_post_example_builds_checked_attached_payloads(tmp_path, provider):
         path.name: path.read_bytes()
         for path in sorted((run / "api_requests").glob("segment_*.jsonl"))
     }
+    if provider == "anthropic":
+        original_payloads = [
+            payload
+            for path in sorted((run / "api_requests").glob("segment_*.jsonl"))
+            for payload in ProviderAdapter.read_jsonl(path)
+        ]
+        assert all("temperature" not in payload["params"] for payload in original_payloads)
     attach_files_to_run(
         run,
         column="attachment_file",

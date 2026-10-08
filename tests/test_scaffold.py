@@ -44,9 +44,7 @@ def test_scaffold_matches_checked_in_grant_example(tmp_path):
     assert generated_config["providers"]["openai"]["options"] == {
         "reasoning": {"effort": "low"}
     }
-    assert generated_config["providers"]["anthropic"]["options"] == {
-        "temperature": 0
-    }
+    assert "options" not in generated_config["providers"]["anthropic"]
     assert (root / "runs").is_dir()
     assert not list((root / "runs").iterdir())
     assert (root / ".gitignore").read_text(encoding="utf-8") == "runs/\n.env\n"
