@@ -192,7 +192,13 @@ def prepare_run(
     max_requests = settings.max_requests_per_batch or adapter.default_max_requests
     max_bytes = settings.max_batch_bytes or adapter.default_max_bytes
     segments = _split_payloads(payloads, max_requests, max_bytes)
-    estimate = estimate_cost(config, provider, [request.system_prompt + "\n" + request.user_prompt for request in canonical], execution)
+    schema_text = json.dumps(schema, sort_keys=True)
+    estimate = estimate_cost(
+        config,
+        provider,
+        [request.system_prompt + "\n" + request.user_prompt + "\n" + schema_text for request in canonical],
+        execution,
+    )
     if estimate.estimated_usd is None:
         raise ValueError(f"No pricing is configured for {provider}/{settings.model}; add provider price overrides")
     if estimate.estimated_usd > config.budget.max_estimated_usd:
@@ -611,8 +617,6 @@ def _refresh_run_status(state: dict[str, Any]) -> None:
         state["status"] = "submitted"
     elif "failed" in statuses:
         state["status"] = "failed"
-    elif "cancelled" in statuses:
-        state["status"] = "cancelled"
     elif statuses & {"completed", "downloaded"}:
         state["status"] = "running"
     elif "prepared" in statuses:
@@ -684,10 +688,7 @@ def submit_run(
         state = load_state(run_dir)
         selected = _select_segments(state, segment_range)
         _validate_submit_targets(selected, explicit=segment_range is not None)
-        # "cancelled" is excluded here: unlike completed/completed_with_failures, a
-        # cancelled top-level status can still coexist with prepared segments that
-        # remain eligible for submission (a partial cancel).
-        if state.get("status") in {"completed", "completed_with_failures"}:
+        if state.get("status") in {"completed", "completed_with_failures", "cancelled"}:
             return state
         submitted_any = False
         for segment in selected:

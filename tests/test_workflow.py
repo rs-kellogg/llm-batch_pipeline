@@ -633,9 +633,7 @@ def test_selective_cancel_preserves_prepared_segments_for_later_submission(
 
     state = cancel_run(run, adapter, segment_range=(1, 2))
     assert adapter.cancelled_batch_ids == [submitted_ids[0], submitted_ids[1]]
-    # Two segments were cancelled and two remain prepared; the run-level status
-    # surfaces the cancellation rather than masking it as "prepared".
-    assert state["status"] == "cancelled"
+    assert state["status"] == "prepared"
 
     state = submit_run(run, adapter)
     assert adapter.submissions == 4

@@ -94,7 +94,7 @@ def _validate_project(config_or_path: ProjectConfig | str | Path, report_path: s
         if missing:
             findings.append(AuditFinding(severity="error", code="missing_required_field", message=f"Source row {record.source_row} is missing required fields: {missing}", record_ids=[record.record_id] if record.record_id else [], source_rows=[record.source_row]))
     row_schema = load_row_schema(config)
-    wrapped_schema(row_schema)
+    schema_text = json.dumps(wrapped_schema(row_schema), sort_keys=True)
     schema_properties = set(row_schema.get("properties", {}))
     for output_field, source_column in config.evaluation.gold_columns.items():
         if source_column not in df.columns:
@@ -122,9 +122,9 @@ def _validate_project(config_or_path: ProjectConfig | str | Path, report_path: s
         group = records[start : start + config.task.rows_per_request]
         prompt_records = [{"record_id": r.record_id, **r.sent} for r in group]
         user_prompt = render_user_prompt(user_template, prompt_records, context)
-        request_texts.append(system_prompt + "\n" + user_prompt)
+        request_texts.append(system_prompt + "\n" + user_prompt + "\n" + schema_text)
         prompt_records_by_request.append((system_prompt, user_prompt))
-        estimated_tokens = max(1, (len(system_prompt) + len(user_prompt) + 3) // 4)
+        estimated_tokens = max(1, (len(system_prompt) + len(user_prompt) + len(schema_text) + 3) // 4)
         if config.task.max_input_tokens and estimated_tokens > config.task.max_input_tokens:
             findings.append(AuditFinding(severity="error", code="request_context_limit", message=f"Request {len(request_texts) - 1} is approximately {estimated_tokens:,} input tokens, above task.max_input_tokens={config.task.max_input_tokens:,}"))
     estimates = {name: estimate_cost(config, name, request_texts).model_dump() for name in config.providers}
