@@ -27,6 +27,11 @@ app = typer.Typer(
 )
 console = Console()
 
+FILE_INPUT_COST_UNKNOWN_WARNING = (
+    "[bold yellow]File input cost is unknown.[/bold yellow] The prepared ${estimate:.4f} "
+    "estimate covers text only; the configured budget does not cap file processing cost."
+)
+
 
 def _print_json(data: dict) -> None:
     console.print_json(json.dumps(data, default=str))
@@ -313,11 +318,15 @@ def submit_command(
             batch_summary = batch_submission_summary(run_dir, segment_range)
             confirmation_count = batch_summary["request_count"]
             if confirmation_count == 0:
-                indexes = batch_summary["selected_segment_indexes"]
-                console.print(
-                    f"No action: selected batch segment(s) {indexes} are already submitted. "
-                    "No API requests were run."
-                )
+                cancelled = batch_summary["cancelled_segment_indexes"]
+                already_submitted = batch_summary["already_submitted_indexes"]
+                parts = []
+                if already_submitted:
+                    parts.append(f"segment(s) {already_submitted} are already submitted")
+                if cancelled:
+                    parts.append(f"segment(s) {cancelled} were cancelled and cannot be resubmitted")
+                detail = "; ".join(parts) if parts else "no segments require submission"
+                console.print(f"No action: {detail}. No API requests were run.")
                 return
 
         noun = "request" if confirmation_count == 1 else "requests"
@@ -346,10 +355,7 @@ def submit_command(
                     f"{selected_text}. "
                 )
             if attached:
-                console.print(
-                    f"[bold yellow]File input cost is unknown.[/bold yellow] The prepared ${estimate:.4f} "
-                    "estimate covers text only; the configured budget does not cap file processing cost."
-                )
+                console.print(FILE_INPUT_COST_UNKNOWN_WARNING.format(estimate=estimate))
                 question = (
                     f"{range_text}Submit batch {segment_noun} {index_text} containing "
                     f"{confirmation_count} {noun} with unknown total cost?"
@@ -362,10 +368,7 @@ def submit_command(
                     "this subset is smaller."
                 )
         elif attached:
-            console.print(
-                f"[bold yellow]File input cost is unknown.[/bold yellow] The prepared ${estimate:.4f} "
-                "estimate covers text only; the configured budget does not cap file processing cost."
-            )
+            console.print(FILE_INPUT_COST_UNKNOWN_WARNING.format(estimate=estimate))
             question = f"Execute {confirmation_count}{qualifier} {mode} {noun} with unknown total cost?"
         else:
             question = (

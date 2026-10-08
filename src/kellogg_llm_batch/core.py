@@ -563,8 +563,11 @@ def _validate_submit_targets(
     ineligible = [
         (segment["index"], segment["status"])
         for segment in segments
-        if not segment.get("remote_batch_id")
-        and segment["status"] not in {"prepared", "failed"}
+        if segment["status"] == "cancelled"
+        or (
+            not segment.get("remote_batch_id")
+            and segment["status"] not in {"prepared", "failed"}
+        )
     ]
     if ineligible:
         details = ", ".join(f"{index} ({status})" for index, status in ineligible)
@@ -606,12 +609,14 @@ def _refresh_run_status(state: dict[str, Any]) -> None:
         state["status"] = "running"
     elif "submitted" in statuses:
         state["status"] = "submitted"
+    elif "failed" in statuses:
+        state["status"] = "failed"
+    elif "cancelled" in statuses:
+        state["status"] = "cancelled"
     elif statuses & {"completed", "downloaded"}:
         state["status"] = "running"
     elif "prepared" in statuses:
         state["status"] = "prepared"
-    elif "failed" in statuses:
-        state["status"] = "failed"
     else:
         state["status"] = "running"
 
@@ -646,7 +651,12 @@ def batch_submission_summary(
         "selected_segment_indexes": [segment["index"] for segment in selected],
         "pending_segment_indexes": [segment["index"] for segment in pending],
         "already_submitted_indexes": [
-            segment["index"] for segment in selected if segment.get("remote_batch_id")
+            segment["index"]
+            for segment in selected
+            if segment.get("remote_batch_id") and segment["status"] != "cancelled"
+        ],
+        "cancelled_segment_indexes": [
+            segment["index"] for segment in selected if segment["status"] == "cancelled"
         ],
         "request_count": request_count,
     }
@@ -674,7 +684,10 @@ def submit_run(
         state = load_state(run_dir)
         selected = _select_segments(state, segment_range)
         _validate_submit_targets(selected, explicit=segment_range is not None)
-        if state.get("status") in {"completed", "completed_with_failures", "cancelled"}:
+        # "cancelled" is excluded here: unlike completed/completed_with_failures, a
+        # cancelled top-level status can still coexist with prepared segments that
+        # remain eligible for submission (a partial cancel).
+        if state.get("status") in {"completed", "completed_with_failures"}:
             return state
         submitted_any = False
         for segment in selected:

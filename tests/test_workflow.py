@@ -151,6 +151,7 @@ def test_range_submit_is_idempotent_and_open_end_sends_remainder(
         "selected_segment_indexes": [0, 1],
         "pending_segment_indexes": [0, 1],
         "already_submitted_indexes": [],
+        "cancelled_segment_indexes": [],
         "request_count": 2,
     }
 
@@ -632,7 +633,9 @@ def test_selective_cancel_preserves_prepared_segments_for_later_submission(
 
     state = cancel_run(run, adapter, segment_range=(1, 2))
     assert adapter.cancelled_batch_ids == [submitted_ids[0], submitted_ids[1]]
-    assert state["status"] == "prepared"
+    # Two segments were cancelled and two remain prepared; the run-level status
+    # surfaces the cancellation rather than masking it as "prepared".
+    assert state["status"] == "cancelled"
 
     state = submit_run(run, adapter)
     assert adapter.submissions == 4
