@@ -639,7 +639,7 @@ def _settings_and_save(draft: ProjectDraft) -> None:
         existing = config.get("providers", {})
         selected = st.multiselect("Providers", ["openai", "anthropic"], default=list(existing) or ["openai"])
         providers = {}
-        defaults = {"openai": "gpt-5-mini", "anthropic": "claude-haiku-4-5"}
+        defaults = {"openai": "gpt-5.4-mini", "anthropic": "claude-haiku-4-5"}
         for name in selected:
             item = dict(existing.get(name, {}))
             item["model"] = st.text_input(f"{name} model", value=item.get("model", defaults[name]), key=f"model_{name}")

@@ -4,10 +4,12 @@ from .config import ProjectConfig
 from .models import CostEstimate
 
 
-PRICING_AS_OF = "2026-09-09"
+PRICING_AS_OF = "2026-10-08"
 PRICES: dict[tuple[str, str, str], tuple[float, float]] = {
     ("openai", "gpt-5-mini", "batch"): (0.125, 1.0),
     ("openai", "gpt-5-mini", "sync"): (0.25, 2.0),
+    ("openai", "gpt-5.4-mini", "batch"): (0.375, 2.25),
+    ("openai", "gpt-5.4-mini", "sync"): (0.75, 4.5),
     ("anthropic", "claude-haiku-4-5", "batch"): (0.5, 2.5),
     ("anthropic", "claude-haiku-4-5", "sync"): (1.0, 5.0),
 }

@@ -222,7 +222,7 @@ def test_submit_warns_only_when_resuming_partial_sync_run(example_config, tmp_pa
     assert "Resuming partial synchronous run: 1 of 2 requests" in output
     assert "1 remains" in output
     assert "one unrecorded request could run again" in output
-    assert "Execute 1 remaining sync request with estimated maximum remaining cost $0.0025?" in output
+    assert "Execute 1 remaining sync request with estimated maximum remaining cost $0.0058?" in output
     assert "Completed 2 out of 2 synchronous requests" in output
     assert fake.sync_calls == 1
 

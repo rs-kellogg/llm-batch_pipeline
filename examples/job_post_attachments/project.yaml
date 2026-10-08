@@ -32,7 +32,7 @@ prompt:
 
 providers:
   openai:
-    model: gpt-5-mini
+    model: gpt-5.4-mini
     max_requests_per_batch: 2
     options:
       reasoning:

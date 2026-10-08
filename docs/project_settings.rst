@@ -123,7 +123,7 @@ Providers and budget
 
    providers:
      openai:
-       model: gpt-5-mini
+       model: gpt-5.4-mini
        options:
          reasoning:
            effort: low

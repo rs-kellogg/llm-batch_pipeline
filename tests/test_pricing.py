@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from kellogg_llm_batch.config import load_config
-from kellogg_llm_batch.pricing import PRICES, estimate_cost, token_prices
+from kellogg_llm_batch.pricing import PRICES, PRICING_AS_OF, estimate_cost, token_prices
 from kellogg_llm_batch.scaffold import scaffold_project
 
 
@@ -21,7 +21,7 @@ def test_batch_estimate_uses_default_price_table(tmp_path):
     estimate = estimate_cost(config, "openai", ["hello world"], "batch")
     price = PRICES[("openai", config.providers["openai"].model, "batch")]
     assert (estimate.input_price_per_million, estimate.output_price_per_million) == price
-    assert estimate.pricing_as_of == "2026-09-09"
+    assert estimate.pricing_as_of == PRICING_AS_OF
     assert estimate.estimated_usd == pytest.approx(
         estimate.estimated_input_tokens / 1_000_000 * price[0] + estimate.maximum_output_tokens / 1_000_000 * price[1]
     )
@@ -32,7 +32,14 @@ def test_sync_estimate_uses_default_price_table(tmp_path):
     estimate = estimate_cost(config, "openai", ["hello world"], "sync")
     price = PRICES[("openai", config.providers["openai"].model, "sync")]
     assert (estimate.input_price_per_million, estimate.output_price_per_million) == price
-    assert estimate.pricing_as_of == "2026-09-09"
+    assert estimate.pricing_as_of == PRICING_AS_OF
+
+
+def test_gpt_5_4_mini_and_legacy_gpt_5_mini_prices_are_available():
+    assert PRICES[("openai", "gpt-5.4-mini", "batch")] == (0.375, 2.25)
+    assert PRICES[("openai", "gpt-5.4-mini", "sync")] == (0.75, 4.5)
+    assert PRICES[("openai", "gpt-5-mini", "batch")] == (0.125, 1.0)
+    assert PRICES[("openai", "gpt-5-mini", "sync")] == (0.25, 2.0)
 
 
 def test_batch_override_takes_priority_over_default_table(tmp_path):
@@ -68,7 +75,7 @@ def test_sync_override_does_not_leak_into_batch_pricing(tmp_path):
 
     default_price = PRICES[("openai", config.providers["openai"].model, "batch")]
     assert (batch_estimate.input_price_per_million, batch_estimate.output_price_per_million) == default_price
-    assert batch_estimate.pricing_as_of == "2026-09-09"
+    assert batch_estimate.pricing_as_of == PRICING_AS_OF
 
 
 def test_unknown_model_without_override_has_no_price(tmp_path):

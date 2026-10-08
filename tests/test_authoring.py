@@ -211,7 +211,7 @@ def test_new_project_without_codebook_uses_records_only_prompt(tmp_path):
     source = tmp_path / "source.csv"
     pd.DataFrame([{"id": "A", "text": "Alpha"}, {"id": "B", "text": "Beta"}]).to_csv(source, index=False)
     draft = new_project_draft(tmp_path / "records-only")
-    draft.config["providers"] = {"openai": {"model": "gpt-5-mini"}}
+    draft.config["providers"] = {"openai": {"model": "gpt-5.4-mini"}}
     draft.config["input"].update(
         {
             "path": str(source),
@@ -236,7 +236,7 @@ def test_codebook_selection_preserves_unmanaged_context_file(tmp_path, same_cont
     source = tmp_path / "source.csv"
     pd.DataFrame([{"id": "A", "text": "Alpha"}]).to_csv(source, index=False)
     draft = new_project_draft(tmp_path / "project")
-    draft.config["providers"] = {"openai": {"model": "gpt-5-mini"}}
+    draft.config["providers"] = {"openai": {"model": "gpt-5.4-mini"}}
     draft.config["input"].update(
         {
             "path": str(source),

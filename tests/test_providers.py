@@ -10,7 +10,7 @@ SCHEMA = {"type": "object", "properties": {}, "required": [], "additionalPropert
 
 def test_openai_payload_uses_responses_structured_output():
     options = {"reasoning": {"effort": "low"}, "future_option": True}
-    payload = OpenAIAdapter(client=object()).build_payload("request_1", "gpt-5-mini", "system", "user", SCHEMA, 100, options)
+    payload = OpenAIAdapter(client=object()).build_payload("request_1", "gpt-5.4-mini", "system", "user", SCHEMA, 100, options)
     assert payload["url"] == "/v1/responses"
     assert payload["body"]["text"]["format"]["schema"] == SCHEMA
     assert payload["body"]["reasoning"] == {"effort": "low"}
@@ -127,7 +127,7 @@ def test_openai_sync_request_keeps_provider_options():
     adapter = OpenAIAdapter(client=SimpleNamespace(responses=Responses()))
     payload = adapter.build_payload(
         "request_1",
-        "gpt-5-mini",
+        "gpt-5.4-mini",
         "system",
         "user",
         SCHEMA,
