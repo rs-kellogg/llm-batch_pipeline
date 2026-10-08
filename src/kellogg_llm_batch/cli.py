@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .attachments import attach_files_to_run
-from .core import audit_run, batch_submission_summary, cancel_run, compare_runs, find_incomplete_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, sync_checkpoint_progress, sync_run
+from .core import audit_run, batch_submission_summary, cancel_run, compare_runs, extrapolate_cost_from_run, find_incomplete_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, sync_checkpoint_progress, sync_run
 from .scaffold import scaffold_project
 from .state import load_state, resolve_run
 from .validation import ProjectValidationError, validate_project
@@ -169,8 +169,7 @@ def _print_validation(report: dict) -> None:
         "[dim]Worst-case ceiling, not an expected cost: input size is approximated by "
         "character count, and every request is assumed to use the full task.max_output_tokens. "
         "Batch-rate pricing is shown; a sync/pilot run bills at the (higher) sync rate. For a "
-        "realistic forecast, run a pilot and scale its run_reports/run_summary.json "
-        "actual_usage_cost_usd by your full row count.[/dim]"
+        "realistic forecast, run a pilot and then `kllm-batch estimate-cost PILOT_RUN_DIR`.[/dim]"
     )
 
 
@@ -213,8 +212,7 @@ def prepare_command(
         console.print(
             "[dim]Worst-case ceiling: input size is approximated by character count, and "
             "every request assumes the full task.max_output_tokens. For a realistic forecast, "
-            "run a pilot and scale its run_reports/run_summary.json actual_usage_cost_usd by "
-            "your full row count.[/dim]"
+            "run a pilot and then `kllm-batch estimate-cost PILOT_RUN_DIR`.[/dim]"
         )
         console.print(f"Inspect: {run_dir / 'REVIEW.md'}")
         console.print(f"Submit with: kllm-batch submit {run_dir}")
@@ -545,6 +543,44 @@ def audit_command(run: Path = typer.Argument(..., help="Run directory.")):
     """
     try:
         _print_json(audit_run(run))
+    except Exception as exc:
+        _fail(exc)
+
+
+@app.command("estimate-cost")
+def estimate_cost_command(
+    run: Path = typer.Argument(..., help="A synced and processed run directory (typically a pilot) with recorded usage."),
+    target_rows: Optional[int] = typer.Option(
+        None,
+        min=1,
+        help="Row count to project to; defaults to the project's full source row count.",
+    ),
+):
+    """Project a realistic full-run cost from a completed run's actual token usage.
+
+    Example: `kllm-batch estimate-cost PILOT_RUN_DIR`. Scales the run's real
+    provider-reported token usage (run_reports/run_summary.json) by row count,
+    which is far more realistic than the worst-case ceiling `prepare`/`validate`
+    report. Requires the run to be synced and processed first; file-attachment
+    cost is never included, regardless of the source run.
+    """
+    try:
+        result = extrapolate_cost_from_run(run, target_rows)
+        console.print(
+            f"Observed {result['observed_rows']:,} row(s): "
+            f"${result['observed_actual_cost_usd']:.4f} "
+            f"(${result['per_row_cost_usd']:.6f}/row)."
+        )
+        console.print(
+            f"Projected to {result['target_rows']:,} row(s): "
+            f"${result['extrapolated_cost_usd']:.4f}"
+        )
+        if result["excludes_file_input_cost"]:
+            console.print(
+                "[bold yellow]Note:[/bold yellow] the source run had attached files; "
+                "this projection excludes file-input cost."
+            )
+        _print_json(result)
     except Exception as exc:
         _fail(exc)
 

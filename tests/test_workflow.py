@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 import kellogg_llm_batch.core as core
-from kellogg_llm_batch.core import audit_run, batch_submission_summary, cancel_run, compare_runs, prepare_retry, prepare_run, submit_run, sync_run
+from kellogg_llm_batch.core import audit_run, batch_submission_summary, cancel_run, compare_runs, extrapolate_cost_from_run, prepare_retry, prepare_run, submit_run, sync_run
 from kellogg_llm_batch.providers.base import ProviderAdapter
 from kellogg_llm_batch.state import load_state, save_state
 
@@ -118,6 +118,38 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
         "accuracy": pytest.approx(0.1),
     }
     assert load_state(run)["stage"] == "audited"
+
+
+def test_estimate_cost_extrapolates_from_actual_usage(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    config = _temporary_config(example_config, tmp_path)
+    pilot = prepare_run(config, "openai", sample_size=3, seed=1)
+    submit_run(pilot, fake)
+
+    summary = json.loads((pilot / "run_reports" / "run_summary.json").read_text(encoding="utf-8"))
+    assert summary["valid_records"] == 3
+
+    result = extrapolate_cost_from_run(pilot)
+    assert result["observed_rows"] == 3
+    assert result["target_rows"] == 10
+    assert result["observed_actual_cost_usd"] == pytest.approx(summary["actual_usage_cost_usd"])
+    assert result["extrapolated_cost_usd"] == pytest.approx(summary["actual_usage_cost_usd"] * 10 / 3)
+    assert result["extrapolated_input_tokens"] == round(summary["input_tokens"] * 10 / 3)
+    assert result["excludes_file_input_cost"] is False
+
+    custom = extrapolate_cost_from_run(pilot, target_rows=100)
+    assert custom["target_rows"] == 100
+    assert custom["extrapolated_cost_usd"] == pytest.approx(summary["actual_usage_cost_usd"] * 100 / 3)
+
+
+def test_estimate_cost_requires_processed_usage(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    config = _temporary_config(example_config, tmp_path)
+    run = prepare_run(config, "openai")
+    with pytest.raises(ValueError, match="sync and process"):
+        extrapolate_cost_from_run(run)
 
 
 def test_consolidated_request_map_supports_multiple_segments(example_config, tmp_path, monkeypatch):

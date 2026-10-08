@@ -1011,6 +1011,57 @@ def _write_run_summary(run_dir: Path, audit: dict[str, Any]) -> None:
     atomic_write_json(run_dir / "run_reports" / "run_summary.json", summary)
 
 
+def extrapolate_cost_from_run(run: str | Path, target_rows: int | None = None) -> dict[str, Any]:
+    """Scale a processed run's actual provider-reported token usage to a different row count.
+
+    Unlike the worst-case ceiling from `prepare`/`validate` (character-approximated
+    input, maximum possible output per request), this uses the run's real recorded
+    `input_tokens`/`output_tokens` and billed cost, so it reflects typical output
+    length for this prompt/schema/data rather than the configured maximum.
+    """
+    run_dir = resolve_run(run)
+    manifest = _manifest(run_dir)
+    summary_path = run_dir / "run_reports" / "run_summary.json"
+    if not summary_path.exists():
+        raise ValueError(
+            f"No run summary found at {summary_path}; sync and process the run "
+            "(e.g. `kllm-batch sync`) before estimating from it"
+        )
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    observed_rows = summary.get("valid_records", 0)
+    if observed_rows <= 0:
+        raise ValueError("Run has no successfully processed records to extrapolate from")
+    actual_cost = summary.get("actual_usage_cost_usd")
+    if actual_cost is None:
+        raise ValueError(
+            "Run summary has no actual_usage_cost_usd; pricing may be unavailable "
+            "for this provider/model"
+        )
+    if target_rows is None:
+        target_rows = manifest["source_total_rows"]
+    if target_rows <= 0:
+        raise ValueError(f"target_rows must be positive; received {target_rows}")
+    input_tokens = summary.get("input_tokens", 0)
+    output_tokens = summary.get("output_tokens", 0)
+    scale = target_rows / observed_rows
+    has_attachments = (manifest.get("file_attachments") or {}).get("status") == "ready"
+    return {
+        "source_run": str(run_dir),
+        "observed_rows": observed_rows,
+        "observed_input_tokens": input_tokens,
+        "observed_output_tokens": output_tokens,
+        "observed_actual_cost_usd": actual_cost,
+        "per_row_cost_usd": actual_cost / observed_rows,
+        "target_rows": target_rows,
+        "extrapolated_input_tokens": round(input_tokens * scale),
+        "extrapolated_output_tokens": round(output_tokens * scale),
+        "extrapolated_cost_usd": actual_cost * scale,
+        "pricing_as_of": summary.get("pricing_as_of"),
+        "excludes_file_input_cost": has_attachments,
+        "method": "scaled_from_actual_usage",
+    }
+
+
 def _evaluation_metrics(run_dir: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     relative_path = manifest.get("gold_labels_file")
     results_path = run_dir / "outputs" / "results.parquet"

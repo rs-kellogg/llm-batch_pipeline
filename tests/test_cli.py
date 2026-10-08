@@ -17,7 +17,7 @@ runner = CliRunner()
 def test_help_lists_workflow_commands():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("gui", "validate", "prepare", "submit", "status", "sync", "audit", "retry", "merge", "compare"):
+    for command in ("gui", "validate", "prepare", "submit", "status", "sync", "audit", "estimate-cost", "retry", "merge", "compare"):
         assert command in result.stdout
     assert "pilot" not in result.stdout
 
@@ -143,6 +143,46 @@ def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, mo
     assert runner.invoke(app, ["audit", str(run)]).exit_code == 0
     assert runner.invoke(app, ["merge", str(run)]).exit_code == 0
     assert runner.invoke(app, ["compare", str(run), str(run)]).exit_code == 0
+
+
+def test_estimate_cost_command_projects_from_pilot(example_config, tmp_path, monkeypatch):
+    raw = yaml.safe_load(example_config.read_text())
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
+    raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
+    raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
+    raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
+    raw["prompt"]["context"]["codebook"]["path"] = str(example_config.parent / "context" / "codebook.csv")
+    raw["output"]["runs_directory"] = str(tmp_path / "runs")
+    config = tmp_path / "project.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+
+    assert runner.invoke(
+        app, ["prepare", "-c", str(config), "--provider", "openai", "--sample-size", "3", "--seed", "42"]
+    ).exit_code == 0
+    pilot = next((tmp_path / "runs").iterdir())
+    assert runner.invoke(app, ["submit", str(pilot), "--yes"]).exit_code == 0
+
+    result = runner.invoke(app, ["estimate-cost", str(pilot)])
+    assert result.exit_code == 0
+    assert "Observed 3 row(s)" in result.stdout
+    assert "Projected to 10 row(s)" in result.stdout
+
+    custom = runner.invoke(app, ["estimate-cost", str(pilot), "--target-rows", "100"])
+    assert custom.exit_code == 0
+    assert "Projected to 100 row(s)" in custom.stdout
+
+    not_processed = runner.invoke(
+        app, ["prepare", "-c", str(config), "--provider", "openai", "--sample-size", "3", "--seed", "7"]
+    )
+    assert not_processed.exit_code == 0
+    unprocessed_run = next(
+        path for path in (tmp_path / "runs").iterdir() if path != pilot
+    )
+    failure = runner.invoke(app, ["estimate-cost", str(unprocessed_run)])
+    assert failure.exit_code == 1
+    assert "sync and process" in failure.stdout
 
 
 def test_submit_warns_only_when_resuming_partial_sync_run(example_config, tmp_path, monkeypatch):
