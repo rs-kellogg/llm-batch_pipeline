@@ -598,6 +598,64 @@ def _validate_cancel_targets(
         raise ValueError(f"Selected segments are not eligible for cancellation: {details}")
 
 
+def _request_counts(raw: dict[str, Any]) -> dict[str, int] | None:
+    counts = raw.get("request_counts")
+    if not isinstance(counts, dict):
+        return None
+    normalized: dict[str, int] = {}
+    for name, value in counts.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        normalized[str(name)] = int(value)
+    return normalized or None
+
+
+def _update_cancellation(
+    segment: dict[str, Any],
+    *,
+    provider_status: str | None,
+    raw: dict[str, Any] | None = None,
+    terminal: bool = False,
+) -> None:
+    cancellation = segment.get("cancellation")
+    if not isinstance(cancellation, dict):
+        return
+    if provider_status:
+        cancellation["provider_status"] = provider_status
+    counts = _request_counts(raw or {})
+    if counts is not None:
+        cancellation["request_counts"] = counts
+    if not terminal:
+        cancellation["outcome"] = "pending"
+        return
+
+    counts = cancellation.get("request_counts")
+    if isinstance(counts, dict):
+        cancelled = int(counts.get("canceled", 0)) + int(counts.get("cancelled", 0))
+        finished = sum(
+            int(counts.get(name, 0))
+            for name in ("succeeded", "errored", "expired", "canceled", "cancelled")
+        )
+        if cancelled == 0:
+            cancellation["outcome"] = "not_cancelled"
+        elif finished > 0 and cancelled == finished:
+            cancellation["outcome"] = "cancelled"
+        else:
+            cancellation["outcome"] = "partially_cancelled"
+    elif provider_status in {"cancelled", "canceled"}:
+        cancellation["outcome"] = "cancelled"
+    elif cancellation.get("outcome") in {
+        "cancelled",
+        "partially_cancelled",
+        "not_cancelled",
+    }:
+        # Do not erase an outcome already established by an earlier provider
+        # response merely because a later response omits request counts.
+        pass
+    else:
+        cancellation["outcome"] = "unknown"
+
+
 def _refresh_run_status(state: dict[str, Any]) -> None:
     statuses = {segment["status"] for segment in state["segments"]}
     if not statuses:
@@ -611,6 +669,8 @@ def _refresh_run_status(state: dict[str, Any]) -> None:
         state["status"] = "completed_with_failures"
     elif statuses <= {"completed", "downloaded", "processed"}:
         state["status"] = "completed"
+    elif "cancelling" in statuses:
+        state["status"] = "running"
     elif "running" in statuses:
         state["status"] = "running"
     elif "submitted" in statuses:
@@ -724,6 +784,12 @@ def status_run(run: str | Path, adapter: ProviderAdapter | None = None) -> dict:
             segment["provider_status"] = remote["provider_status"]
             segment["status"] = "completed" if remote["state"] == "completed" else remote["state"]
             segment["error"] = None if remote["state"] != "failed" else f"provider status: {remote['provider_status']}"
+            _update_cancellation(
+                segment,
+                provider_status=remote["provider_status"],
+                raw=remote.get("raw"),
+                terminal=remote["state"] in {"completed", "failed", "cancelled"},
+            )
         statuses = {segment["status"] for segment in state["segments"]}
         _refresh_run_status(state)
         if state["status"] in {"submitted", "running", "completed"} and statuses != {"processed"}:
@@ -755,10 +821,36 @@ def cancel_run(
                 try:
                     response = adapter.cancel(segment["remote_batch_id"])
                     provider_status = response.get("status") or response.get("processing_status")
+                    cancellation = {
+                        "requested_at": utc_now(),
+                        "provider_status": provider_status,
+                        "outcome": "pending",
+                    }
+                    segment["cancellation"] = cancellation
+                    terminal = provider_status in {
+                        "cancelled",
+                        "canceled",
+                        "completed",
+                        "ended",
+                        "failed",
+                        "expired",
+                    }
+                    if provider_status in {"cancelled", "canceled"}:
+                        local_status = "cancelled"
+                    elif terminal:
+                        local_status = "completed"
+                    else:
+                        local_status = "cancelling"
                     segment.update(
-                        status="cancelled",
+                        status=local_status,
                         provider_status=provider_status or segment.get("provider_status"),
                         error=None,
+                    )
+                    _update_cancellation(
+                        segment,
+                        provider_status=provider_status,
+                        raw=response,
+                        terminal=terminal,
                     )
                 except Exception as exc:
                     segment["error"] = str(exc)
@@ -801,7 +893,7 @@ def sync_run(
             save_state(run_dir, state)
         _process_downloads(run_dir, adapter)
         state = load_state(run_dir)
-        unfinished = any(segment["status"] in {"submitted", "running"} for segment in state["segments"])
+        unfinished = any(segment["status"] in {"submitted", "running", "cancelling"} for segment in state["segments"])
         if status_callback is not None:
             status_callback(state, unfinished)
         if not watch or not unfinished:

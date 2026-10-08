@@ -247,9 +247,15 @@ def test_cancel_command_cancels_a_submitted_run(example_config, tmp_path, monkey
     result = runner.invoke(app, ["cancel", str(run)])
 
     assert result.exit_code == 0, result.stdout
+    assert "Cancellation" in result.stdout
+    assert "cancelled" in result.stdout
     state = json.loads((run / "state.json").read_text(encoding="utf-8"))
     assert state["status"] == "cancelled"
     assert all(segment["status"] == "cancelled" for segment in state["segments"])
+    assert all(
+        segment["cancellation"]["outcome"] == "cancelled"
+        for segment in state["segments"]
+    )
 
 
 def test_cancel_command_reports_errors_for_unknown_run(tmp_path):

@@ -293,11 +293,15 @@ Target cancellation the same way:
 
 Omitting both range options requests cancellation for every submitted or
 running segment. Completed and prepared segments are skipped. Prepared segments
-outside the range remain available for later submission, and the run becomes
-fully ``cancelled`` only when all its segments are cancelled. Provider work
-completed before cancellation may still be billable. Segment ranges are
-limited to batch execution; synchronous pilots resume from their per-request
-checkpoints instead of creating remote segment jobs.
+outside the range remain available for later submission. An asynchronous
+provider response is recorded as ``cancelling`` until a later status check
+reaches a terminal state. The status table's ``Cancellation`` column preserves
+the final provider request counts even after available results are processed;
+it therefore distinguishes fully or partially cancelled work from a batch that
+completed before cancellation took effect. Provider work completed before
+cancellation may still be billable. Segment ranges are limited to batch
+execution; synchronous pilots resume from their per-request checkpoints
+instead of creating remote segment jobs.
 
 Understand artifacts and provenance
 -----------------------------------

@@ -462,8 +462,43 @@ def _print_state(state: dict) -> None:
     table.add_column("Local status")
     table.add_column("Provider status")
     table.add_column("Batch ID")
+    show_cancellation = any(segment.get("cancellation") for segment in state["segments"])
+    if show_cancellation:
+        table.add_column("Cancellation")
     for segment in state["segments"]:
-        table.add_row(str(segment["index"]), segment["status"], str(segment.get("provider_status") or ""), str(segment.get("remote_batch_id") or ""))
+        row = [
+            str(segment["index"]),
+            segment["status"],
+            str(segment.get("provider_status") or ""),
+            str(segment.get("remote_batch_id") or ""),
+        ]
+        if show_cancellation:
+            cancellation = segment.get("cancellation") or {}
+            outcome = cancellation.get("outcome")
+            counts = cancellation.get("request_counts") or {}
+            cancelled = int(counts.get("canceled", 0)) + int(counts.get("cancelled", 0))
+            finished = sum(
+                int(counts.get(name, 0))
+                for name in ("succeeded", "errored", "expired", "canceled", "cancelled")
+            )
+            if outcome == "pending":
+                detail = "requested; pending"
+            elif outcome == "cancelled" and finished:
+                detail = f"{cancelled}/{finished} requests cancelled"
+            elif outcome == "cancelled":
+                detail = "cancelled"
+            elif outcome == "partially_cancelled":
+                detail = f"{cancelled}/{finished} requests cancelled"
+            elif outcome == "not_cancelled" and finished:
+                detail = f"0/{finished} cancelled; completed first"
+            elif outcome == "not_cancelled":
+                detail = "no requests cancelled"
+            elif outcome == "unknown":
+                detail = "requested; outcome unavailable"
+            else:
+                detail = ""
+            row.append(detail)
+        table.add_row(*row)
     console.print(table)
 
 

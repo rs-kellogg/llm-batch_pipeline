@@ -54,7 +54,11 @@ kllm-batch status RUN_DIR
 examples/grant_coding/multisegment/sync.sh RUN_DIR
 ```
 
-Cancellation is race-sensitive. A fast remote job may reach a terminal state
-before the cancellation request. In either case, inspect `state.json` and the
-status table to confirm that other segment IDs and local artifacts remain
-unchanged. Segments 3 and 4 remain prepared and can be submitted later.
+Cancellation is asynchronous and race-sensitive. The first table may show a
+local status of `cancelling`; continue polling or run `sync --watch` until the
+provider reaches a terminal state. The `Cancellation` column then reports how
+many requests were actually cancelled. A result such as `0/5 cancelled;
+completed first` means that the provider accepted the cancellation request but
+the batch won the race. Processing terminal partial results does not erase this
+cancellation record. Segments 3 and 4 remain prepared and can be submitted
+later.
