@@ -818,6 +818,47 @@ class AsyncCancellationAdapter(RecordingCancelAdapter):
                 )
 
 
+class OpenAICancellationAdapter(RecordingCancelAdapter):
+    def cancel(self, batch_id):
+        self.cancelled_batch_ids.append(batch_id)
+        return {
+            "id": batch_id,
+            "status": "cancelling",
+            "request_counts": {
+                "completed": 0,
+                "failed": 0,
+                "total": len(self.batches[batch_id]),
+            },
+        }
+
+    def status(self, batch_id):
+        return {
+            "provider_status": "cancelled",
+            "state": "completed",
+            "raw": {
+                "status": "cancelled",
+                "request_counts": {
+                    "completed": 0,
+                    "failed": 0,
+                    "total": len(self.batches[batch_id]),
+                },
+            },
+        }
+
+    def download(self, batch_id, output_path, error_path):
+        with output_path.open("w", encoding="utf-8") as handle:
+            for payload in self.batches[batch_id]:
+                handle.write(
+                    json.dumps(
+                        {
+                            "custom_id": payload["custom_id"],
+                            "status": "cancelled",
+                        }
+                    )
+                    + "\n"
+                )
+
+
 @pytest.mark.parametrize(
     ("counts", "expected"),
     [
@@ -838,6 +879,59 @@ def test_terminal_cancellation_outcome_uses_provider_request_counts(counts, expe
 
     assert segment["cancellation"]["outcome"] == expected
     assert segment["cancellation"]["request_counts"] == counts
+
+
+@pytest.mark.parametrize(
+    ("provider_status", "expected"),
+    [
+        ("cancelled", "cancelled"),
+        ("completed", "not_cancelled"),
+        ("failed", "not_cancelled"),
+        ("expired", "not_cancelled"),
+    ],
+)
+def test_openai_cancellation_outcome_uses_batch_status(
+    provider_status, expected
+):
+    counts = {"completed": 2, "failed": 0, "total": 5}
+    segment = {"cancellation": {"outcome": "pending"}}
+
+    core._update_cancellation(
+        segment,
+        provider_status=provider_status,
+        raw={"request_counts": counts},
+        terminal=True,
+    )
+
+    cancellation = segment["cancellation"]
+    summary = core.summarize_cancellation(cancellation)
+    assert cancellation["outcome"] == expected
+    assert cancellation["request_counts"] == counts
+    assert summary["cancelled_requests"] is None
+    assert summary["finished_requests"] is None
+
+
+def test_cancellation_preserves_finalized_outcome_when_later_counts_are_omitted():
+    segment = {
+        "cancellation": {
+            "provider_status": "ended",
+            "outcome": "partially_cancelled",
+            "request_counts": {"succeeded": 2, "canceled": 3},
+        }
+    }
+
+    core._update_cancellation(
+        segment,
+        provider_status="ended",
+        raw={},
+        terminal=True,
+    )
+
+    assert segment["cancellation"]["outcome"] == "partially_cancelled"
+    assert segment["cancellation"]["request_counts"] == {
+        "succeeded": 2,
+        "canceled": 3,
+    }
 
 
 def test_selective_cancel_preserves_prepared_segments_for_later_submission(
@@ -905,6 +999,32 @@ def test_async_cancellation_remains_pollable_and_preserves_terminal_counts(
     assert segment["status"] == "processed"
     assert segment["cancellation"]["outcome"] == "cancelled"
     assert segment["cancellation"]["request_counts"]["canceled"] == 1
+
+
+def test_openai_cancellation_remains_cancelled_through_status_and_sync(
+    example_config, tmp_path, monkeypatch
+):
+    adapter = OpenAICancellationAdapter()
+    run = _segmented_run(example_config, tmp_path, monkeypatch, adapter)
+    submit_run(run, adapter, segment_range=(0, 1))
+
+    cancelling = cancel_run(run, adapter, segment_range=(0, 1))
+    assert cancelling["segments"][0]["cancellation"]["outcome"] == "pending"
+
+    completed = status_run(run, adapter)
+    segment = completed["segments"][0]
+    assert segment["status"] == "completed"
+    assert segment["cancellation"]["outcome"] == "cancelled"
+    assert segment["cancellation"]["request_counts"] == {
+        "completed": 0,
+        "failed": 0,
+        "total": 1,
+    }
+
+    processed = sync_run(run, adapter=adapter)
+    segment = processed["segments"][0]
+    assert segment["status"] == "processed"
+    assert segment["cancellation"]["outcome"] == "cancelled"
 
 
 def test_explicit_cancel_rejects_ineligible_segments_before_provider_calls(

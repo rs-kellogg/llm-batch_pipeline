@@ -2,6 +2,7 @@ from typer.testing import CliRunner
 import json
 from pathlib import Path
 from types import SimpleNamespace
+import pytest
 import yaml
 
 import kellogg_llm_batch.core as core
@@ -258,6 +259,55 @@ def test_cancel_command_reports_errors_for_unknown_run(tmp_path):
     result = runner.invoke(app, ["cancel", str(tmp_path / "missing-run")])
     assert result.exit_code == 1
     assert "Run not found" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("provider_status", "stored_outcome", "expected_fragments"),
+    [
+        (
+            "cancelled",
+            "not_cancelled",
+            ("batch cancelled;", "request count", "unavailable"),
+        ),
+        (
+            "completed",
+            "not_cancelled",
+            ("not cancelled; batch", "completed first"),
+        ),
+    ],
+)
+def test_status_command_formats_openai_cancellation_without_invented_counts(
+    tmp_path, monkeypatch, provider_status, stored_outcome, expected_fragments
+):
+    state = {
+        "run_id": "openai-cancellation-test",
+        "status": "completed",
+        "segments": [
+            {
+                "index": 0,
+                "status": "completed",
+                "provider_status": provider_status,
+                "remote_batch_id": "batch-1",
+                "cancellation": {
+                    "provider_status": provider_status,
+                    "outcome": stored_outcome,
+                    "request_counts": {
+                        "completed": 2,
+                        "failed": 0,
+                        "total": 5,
+                    },
+                },
+            }
+        ],
+    }
+    monkeypatch.setattr("kellogg_llm_batch.cli.status_run", lambda run: state)
+
+    result = runner.invoke(app, ["status", str(tmp_path / "run")])
+
+    assert result.exit_code == 0
+    for fragment in expected_fragments:
+        assert fragment in result.stdout
+    assert "no requests cancelled" not in result.stdout
 
 
 def test_submit_command_targets_segment_range(

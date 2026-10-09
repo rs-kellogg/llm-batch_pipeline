@@ -610,6 +610,74 @@ def _request_counts(raw: dict[str, Any]) -> dict[str, int] | None:
     return normalized or None
 
 
+def summarize_cancellation(
+    cancellation: dict[str, Any],
+    *,
+    terminal: bool | None = None,
+) -> dict[str, Any]:
+    """Return a provider-capability-aware cancellation outcome and progress."""
+    provider_status = str(cancellation.get("provider_status") or "").lower()
+    counts = cancellation.get("request_counts")
+    explicit_count_keys = {"canceled", "cancelled"}
+    has_explicit_counts = isinstance(counts, dict) and bool(
+        explicit_count_keys & set(counts)
+    )
+    cancelled_requests: int | None = None
+    finished_requests: int | None = None
+    if has_explicit_counts:
+        cancelled_requests = int(counts.get("canceled", 0)) + int(
+            counts.get("cancelled", 0)
+        )
+        finished_requests = sum(
+            int(counts.get(name, 0))
+            for name in (
+                "succeeded",
+                "errored",
+                "expired",
+                "canceled",
+                "cancelled",
+            )
+        )
+
+    prior_outcome = cancellation.get("outcome")
+    finalized_outcomes = {
+        "cancelled",
+        "partially_cancelled",
+        "not_cancelled",
+    }
+    if terminal is None:
+        terminal = (
+            provider_status
+            in {"cancelled", "canceled", "completed", "ended", "failed", "expired"}
+            or prior_outcome in finalized_outcomes | {"unknown"}
+        )
+
+    if not terminal:
+        outcome = "pending"
+    elif has_explicit_counts:
+        if cancelled_requests == 0:
+            outcome = "not_cancelled"
+        elif finished_requests and cancelled_requests == finished_requests:
+            outcome = "cancelled"
+        else:
+            outcome = "partially_cancelled"
+    elif provider_status in {"cancelled", "canceled"}:
+        outcome = "cancelled"
+    elif prior_outcome in finalized_outcomes:
+        # Preserve an outcome already established from richer provider data.
+        outcome = prior_outcome
+    elif provider_status in {"completed", "failed", "expired"}:
+        outcome = "not_cancelled"
+    else:
+        outcome = "unknown"
+
+    return {
+        "outcome": outcome,
+        "cancelled_requests": cancelled_requests,
+        "finished_requests": finished_requests,
+    }
+
+
 def _update_cancellation(
     segment: dict[str, Any],
     *,
@@ -625,35 +693,10 @@ def _update_cancellation(
     counts = _request_counts(raw or {})
     if counts is not None:
         cancellation["request_counts"] = counts
-    if not terminal:
-        cancellation["outcome"] = "pending"
-        return
-
-    counts = cancellation.get("request_counts")
-    if isinstance(counts, dict):
-        cancelled = int(counts.get("canceled", 0)) + int(counts.get("cancelled", 0))
-        finished = sum(
-            int(counts.get(name, 0))
-            for name in ("succeeded", "errored", "expired", "canceled", "cancelled")
-        )
-        if cancelled == 0:
-            cancellation["outcome"] = "not_cancelled"
-        elif finished > 0 and cancelled == finished:
-            cancellation["outcome"] = "cancelled"
-        else:
-            cancellation["outcome"] = "partially_cancelled"
-    elif provider_status in {"cancelled", "canceled"}:
-        cancellation["outcome"] = "cancelled"
-    elif cancellation.get("outcome") in {
-        "cancelled",
-        "partially_cancelled",
-        "not_cancelled",
-    }:
-        # Do not erase an outcome already established by an earlier provider
-        # response merely because a later response omits request counts.
-        pass
-    else:
-        cancellation["outcome"] = "unknown"
+    cancellation["outcome"] = summarize_cancellation(
+        cancellation,
+        terminal=terminal,
+    )["outcome"]
 
 
 def _refresh_run_status(state: dict[str, Any]) -> None:

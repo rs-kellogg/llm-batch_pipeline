@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .attachments import attach_files_to_run
-from .core import audit_run, batch_submission_summary, cancel_run, compare_runs, extrapolate_cost_from_run, find_incomplete_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, sync_checkpoint_progress, sync_run
+from .core import audit_run, batch_submission_summary, cancel_run, compare_runs, extrapolate_cost_from_run, find_incomplete_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, summarize_cancellation, sync_checkpoint_progress, sync_run
 from .scaffold import scaffold_project
 from .state import load_state, resolve_run
 from .validation import ProjectValidationError, validate_project
@@ -474,25 +474,27 @@ def _print_state(state: dict) -> None:
         ]
         if show_cancellation:
             cancellation = segment.get("cancellation") or {}
-            outcome = cancellation.get("outcome")
-            counts = cancellation.get("request_counts") or {}
-            cancelled = int(counts.get("canceled", 0)) + int(counts.get("cancelled", 0))
-            finished = sum(
-                int(counts.get(name, 0))
-                for name in ("succeeded", "errored", "expired", "canceled", "cancelled")
-            )
+            summary = summarize_cancellation(cancellation)
+            outcome = summary["outcome"]
+            cancelled = summary["cancelled_requests"]
+            finished = summary["finished_requests"]
+            provider_status = str(cancellation.get("provider_status") or "").lower()
             if outcome == "pending":
                 detail = "requested; pending"
-            elif outcome == "cancelled" and finished:
+            elif outcome == "cancelled" and finished is not None:
                 detail = f"{cancelled}/{finished} requests cancelled"
             elif outcome == "cancelled":
-                detail = "cancelled"
+                detail = "batch cancelled; request count unavailable"
             elif outcome == "partially_cancelled":
                 detail = f"{cancelled}/{finished} requests cancelled"
-            elif outcome == "not_cancelled" and finished:
+            elif outcome == "not_cancelled" and finished is not None:
                 detail = f"0/{finished} cancelled; completed first"
+            elif outcome == "not_cancelled" and provider_status == "completed":
+                detail = "not cancelled; batch completed first"
+            elif outcome == "not_cancelled" and provider_status in {"failed", "expired"}:
+                detail = f"not cancelled; batch {provider_status}"
             elif outcome == "not_cancelled":
-                detail = "no requests cancelled"
+                detail = "not cancelled"
             elif outcome == "unknown":
                 detail = "requested; outcome unavailable"
             else:

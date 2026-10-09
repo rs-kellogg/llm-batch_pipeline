@@ -56,9 +56,12 @@ examples/grant_coding/multisegment/sync.sh RUN_DIR
 
 Cancellation is asynchronous and race-sensitive. The first table may show a
 local status of `cancelling`; continue polling or run `sync --watch` until the
-provider reaches a terminal state. The `Cancellation` column then reports how
-many requests were actually cancelled. A result such as `0/5 cancelled;
-completed first` means that the provider accepted the cancellation request but
-the batch won the race. Processing terminal partial results does not erase this
+provider reaches a terminal state. Anthropic reports request-level cancellation
+counts, so the `Cancellation` column can show results such as `3/5 requests
+cancelled` or `0/5 cancelled; completed first`. OpenAI reports the batch-level
+outcome without a cancelled-request count, so a cancelled batch is shown as
+`batch cancelled; request count unavailable`. If it finishes first, the column
+shows `not cancelled; batch completed first`. Synchronization still downloads
+and processes any partial OpenAI output. Existing artifacts retain the
 cancellation record. Segments 3 and 4 remain prepared and can be submitted
 later.
