@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -12,14 +14,13 @@ import pytest
 import kellogg_llm_batch.core as core
 from kellogg_llm_batch.attachments import attach_files_to_run
 from kellogg_llm_batch.core import merge_run, prepare_retry, prepare_run, submit_run, sync_run
-from kellogg_llm_batch.models import NormalizedResult
 from kellogg_llm_batch.providers.base import ProviderAdapter
 from kellogg_llm_batch.validation import validate_project
 from conftest import FakeAdapter
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-CONTROLLED_RETRY_IDS = {"MRETRY-002", "MRETRY-014", "MRETRY-026"}
+EXPECTED_RETRY_IDS = {"MRETRY-002", "MRETRY-014", "MRETRY-026"}
 
 
 def _copy_example(tmp_path: Path, name: str) -> Path:
@@ -64,7 +65,7 @@ def test_multisegment_example_prepares_five_segments(tmp_path, provider):
 
 
 @pytest.mark.parametrize("provider", ["openai", "anthropic"])
-def test_multisegment_retry_example_prepares_controlled_segments(tmp_path, provider):
+def test_multisegment_retry_example_prepares_normal_segments(tmp_path, provider):
     example = _copy_example(tmp_path, "grant_coding_retry")
     config = example / "project.yaml"
 
@@ -84,41 +85,19 @@ def test_multisegment_retry_example_prepares_controlled_segments(tmp_path, provi
     request_map = ProviderAdapter.read_jsonl(
         run / "input_snapshot" / "request_map.jsonl"
     )
-    source = pd.read_csv(config.parent / "data" / "input-data.csv", keep_default_na=False)
-    controlled = source.loc[
-        source["retry_case"] == "omit_when_trigger_present",
-        ["grant_id", "retry_trigger_id"],
-    ]
-    trigger_by_record = dict(
-        zip(controlled["grant_id"], controlled["retry_trigger_id"], strict=True)
+    payload_text = "\n".join(
+        json.dumps(payload)
+        for path in sorted((run / "api_requests").glob("segment_*.jsonl"))
+        for payload in ProviderAdapter.read_jsonl(path)
     )
-    segment_by_record = {
-        record_id: item["segment_index"]
-        for item in request_map
-        for record_id in item["record_ids"]
-    }
-    request_records_by_id = {
-        record_id: set(item["record_ids"])
-        for item in request_map
-        for record_id in item["record_ids"]
-    }
 
     assert manifest["request_count"] == 10
     assert manifest["segment_count"] == 5
     assert request_counts == [2, 2, 2, 2, 2]
-    assert {
-        record_id: segment_by_record[record_id]
-        for record_id in sorted(CONTROLLED_RETRY_IDS)
-    } == {"MRETRY-002": 0, "MRETRY-014": 2, "MRETRY-026": 4}
-    assert trigger_by_record == {
-        "MRETRY-002": "MRETRY-001",
-        "MRETRY-014": "MRETRY-013",
-        "MRETRY-026": "MRETRY-025",
-    }
-    assert all(
-        trigger_id in request_records_by_id[record_id]
-        for record_id, trigger_id in trigger_by_record.items()
-    )
+    assert len(request_map) == 10
+    assert "retry_case" not in payload_text
+    assert "retry_trigger_id" not in payload_text
+    assert "omit_when_trigger_present" not in payload_text
     standard = REPOSITORY_ROOT / "examples" / "grant_coding"
     assert (example / "schema.json").read_bytes() == (standard / "schema.json").read_bytes()
     assert (example / "context" / "codebook.csv").read_bytes() == (
@@ -126,90 +105,107 @@ def test_multisegment_retry_example_prepares_controlled_segments(tmp_path, provi
     ).read_bytes()
 
 
-class ControlledRetryAdapter(FakeAdapter):
-    prompt_marker = "Classify every record that remains after applying that rule:"
-
-    def download(self, batch_id, output_path, error_path):
-        with output_path.open("w", encoding="utf-8") as handle:
-            for payload in self.batches[batch_id]:
-                records = json.loads(
-                    payload["body"]["input"].split(self.prompt_marker, 1)[1].strip()
-                )
-                request_ids = {record["record_id"] for record in records}
-                included = [
-                    record
-                    for record in records
-                    if not (
-                        record["retry_case"] == "omit_when_trigger_present"
-                        and record["retry_trigger_id"] in request_ids
-                    )
-                ]
-                results = [
-                    {
-                        "record_id": record["record_id"],
-                        "primary_label": "other",
-                        "secondary_label": None,
-                        "confidence": 0.8,
-                        "justification": "Synthetic controlled-retry result.",
-                    }
-                    for record in included
-                ]
-                handle.write(
-                    json.dumps(
-                        {
-                            "custom_id": payload["custom_id"],
-                            "status": "succeeded",
-                            "response_text": json.dumps({"results": results}),
-                        }
-                    )
-                    + "\n"
-                )
-
-    def normalize_line(self, obj):
-        return NormalizedResult(
-            custom_id=obj["custom_id"],
-            status=obj["status"],
-            response_text=obj.get("response_text"),
-            model="fake-controlled-retry",
-            input_tokens=100,
-            output_tokens=20,
-        )
+def _materialize_retry_fixture(example: Path, provider: str) -> Path:
+    python_bin = str(Path(sys.executable).parent)
+    environment = {**os.environ, "PATH": python_bin + os.pathsep + os.environ["PATH"]}
+    subprocess.run(
+        ["bash", str(example / "setup-parent.sh"), provider],
+        check=True,
+        cwd=example.parent,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    parents = sorted((example / "runs").glob(f"*_{provider}_*"))
+    assert len(parents) == 1
+    return parents[0]
 
 
-def test_multisegment_retry_complete_parent_child_merge(tmp_path, monkeypatch):
+@pytest.mark.parametrize("provider", ["openai", "anthropic"])
+def test_multisegment_retry_fixture_is_portable_and_prepares_child(
+    tmp_path, provider
+):
     example = _copy_example(tmp_path, "grant_coding_retry")
-    adapter = ControlledRetryAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    fixture_root = example / "fixtures"
+    inventory = fixture_root / "SHA256SUMS"
+    entries = [
+        line.split(maxsplit=1)
+        for line in inventory.read_text(encoding="utf-8").splitlines()
+        if line.strip() and line.split(maxsplit=1)[1].startswith(f"{provider}/")
+    ]
+    fixture_files = {
+        path.relative_to(fixture_root).as_posix()
+        for path in (fixture_root / provider).rglob("*")
+        if path.is_file()
+    }
+    assert len(entries) == 28
+    assert {relative for _, relative in entries} == fixture_files
+    for expected, relative in entries:
+        fixture_file = fixture_root / relative
+        assert hashlib.sha256(fixture_file.read_bytes()).hexdigest() == expected
+        assert b"/Users/" not in fixture_file.read_bytes()
 
-    parent = prepare_run(example / "project.yaml", "openai", execution="batch")
-    submit_run(parent, adapter)
-    sync_run(parent, adapter=adapter)
-
-    failures = ProviderAdapter.read_jsonl(parent / "outputs" / "failures.jsonl")
-    parent_audit = json.loads(
+    parent = _materialize_retry_fixture(example, provider)
+    manifest = json.loads((parent / "manifest.json").read_text(encoding="utf-8"))
+    state = json.loads((parent / "state.json").read_text(encoding="utf-8"))
+    audit = json.loads(
         (parent / "run_reports" / "audit.json").read_text(encoding="utf-8")
     )
-    assert {item["record_id"] for item in failures} == CONTROLLED_RETRY_IDS
+    failures = ProviderAdapter.read_jsonl(parent / "outputs" / "failures.jsonl")
+
+    assert manifest["provider"] == provider
+    assert manifest["source_path"] == str((example / "data" / "input-data.csv").resolve())
+    assert manifest["config_path"] == str((example / "project.yaml").resolve())
+    assert "__EXAMPLE_ROOT__" not in (parent / "manifest.json").read_text(
+        encoding="utf-8"
+    )
+    assert "__EXAMPLE_ROOT__" not in (
+        parent / "run_reports" / "run_summary.json"
+    ).read_text(encoding="utf-8")
+    assert manifest["segment_count"] == 5
+    assert [segment["status"] for segment in state["segments"]] == ["processed"] * 5
+    assert audit["expected_records"] == 30
+    assert audit["valid_records"] == 27
+    assert set(audit["missing_record_ids"]) == EXPECTED_RETRY_IDS
+    assert audit["complete"] is False
+    assert {item["record_id"] for item in failures} == EXPECTED_RETRY_IDS
     assert {item["category"] for item in failures} == {"missing_output"}
-    assert parent_audit["valid_records"] == 27
-    assert set(parent_audit["missing_record_ids"]) == CONTROLLED_RETRY_IDS
-    assert parent_audit["complete"] is False
+
+    python_bin = str(Path(sys.executable).parent)
+    environment = {**os.environ, "PATH": python_bin + os.pathsep + os.environ["PATH"]}
+    repeated_setup = subprocess.run(
+        ["bash", str(example / "setup-parent.sh"), provider],
+        cwd=example.parent,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert repeated_setup.returncode == 1
+    assert "Refusing to overwrite existing run" in repeated_setup.stderr
 
     child = prepare_retry(parent)
-    child_input = pd.read_parquet(
-        child / "input_snapshot" / "canonical_input.parquet"
+    child_input = pd.read_parquet(child / "input_snapshot" / "canonical_input.parquet")
+    child_manifest = json.loads((child / "manifest.json").read_text(encoding="utf-8"))
+    child_payload = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((child / "api_requests").glob("segment_*.jsonl"))
     )
-    child_manifest = json.loads(
-        (child / "manifest.json").read_text(encoding="utf-8")
-    )
-    assert child_input["record_id"].astype(str).tolist() == sorted(
-        CONTROLLED_RETRY_IDS
-    )
+    assert child_input["record_id"].astype(str).tolist() == sorted(EXPECTED_RETRY_IDS)
     assert child_manifest["purpose"] == "retry"
     assert child_manifest["parent_run"] == str(parent)
     assert child_manifest["request_count"] == 1
     assert child_manifest["segment_count"] == 1
+    assert "retry_case" not in child_payload
+    assert "retry_trigger_id" not in child_payload
+    assert "omit_when_trigger_present" not in child_payload
 
+
+def test_multisegment_retry_complete_fixture_child_merge(tmp_path, monkeypatch):
+    example = _copy_example(tmp_path, "grant_coding_retry")
+    adapter = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    parent = _materialize_retry_fixture(example, "openai")
+    child = prepare_retry(parent)
     submit_run(child, adapter)
     sync_run(child, adapter=adapter)
     child_audit = json.loads(

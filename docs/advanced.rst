@@ -22,9 +22,10 @@ Retry failed records and merge the results
 
 The checked-in `multi-segment retry smoke-test example
 <https://github.com/rs-kellogg/llm-batch_pipeline/tree/main/examples/grant_coding_retry>`_
-provides provider-selectable scripts and controlled missing outputs for
+provides provider-selectable scripts and recorded missing outputs for
 practicing this complete workflow without relying on an organic model failure.
-Its provider submissions still incur normal API usage.
+It installs a terminal parent with three ``missing_output`` records; only
+submission of the newly prepared retry child incurs provider usage.
 
 Use a retry chain when ``outputs/failures.jsonl`` contains retryable provider,
 request, malformed-output, schema, or missing-output failures. The original

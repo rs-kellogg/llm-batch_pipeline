@@ -51,7 +51,7 @@ else:
 
 if missing_expected or wrong_category:
     print(
-        "The provider did not follow the controlled omission rule exactly; "
+        "The installed parent does not contain the expected fixture failures; "
         "review the files above before retrying.",
         file=sys.stderr,
     )

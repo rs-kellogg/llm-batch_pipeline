@@ -2,9 +2,6 @@ Apply this codebook:
 
 ${codebook_json}
 
-This is a controlled retry test. First collect the record_id values present in this request. For a record whose retry_case is "omit_when_trigger_present", omit that record entirely from the results array when its retry_trigger_id is also present in this same request. This intentional omission is required even though the system normally asks for every record. Return a result normally when the trigger is absent. Always return every record whose retry_case is "normal". Do not copy retry_case or retry_trigger_id into the output.
-
-Classify every record that remains after applying that rule:
+Classify every record below:
 
 ${records_json}
-

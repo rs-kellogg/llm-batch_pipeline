@@ -2,7 +2,7 @@ version: 1
 
 project:
   name: grant-topic-coding-multisegment-retry
-  description: Exercise retry and merge with three controlled missing outputs across five batch segments.
+  description: Exercise retry and merge from a recorded five-segment parent with three missing outputs.
 
 input:
   path: data/input-data.csv
@@ -12,15 +12,12 @@ input:
   fields_sent:
     project_title: project_title
     abstract: abstract
-    retry_case: retry_case
-    retry_trigger_id: retry_trigger_id
   columns_preserved:
     - year
     - investigator
     - source_file
   required_fields:
     - abstract
-    - retry_case
   missing_required: error
   field_limits:
     abstract:
@@ -33,7 +30,7 @@ task:
   max_output_tokens: 1200
 
 prompt:
-  version: "1.0-retry-smoke-test"
+  version: "2.0-recorded-parent-retry"
   system_file: prompts/system.txt
   user_file: prompts/user.txt
   context:
