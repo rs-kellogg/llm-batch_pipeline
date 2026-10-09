@@ -90,6 +90,22 @@ def test_attached_requests_preserve_original_and_submit_attached(tmp_path, provi
     assert _manifest(run)["file_attachments"]["status"] == "ready"
 
 
+def test_attach_files_rejects_openai_compatible(tmp_path):
+    config, files_dir = _project(tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["providers"]["openai_compatible"] = {
+        "model": "llama3.1:8b",
+        "base_url": "http://localhost:11434/v1",
+        "sync_input_price_per_million": 0,
+        "sync_output_price_per_million": 0,
+    }
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    run = prepare_run(config, "openai_compatible", execution="sync")
+
+    with pytest.raises(ValueError, match="Unsupported provider for attachments"):
+        attach_files_to_run(run, column="attachment_file", files_dir=files_dir, acknowledge_unestimated_cost=True)
+
+
 def test_text_only_request_and_manifest_remain_unchanged(tmp_path):
     config, _ = _project(tmp_path)
     run = prepare_run(config, "openai", execution="batch")
@@ -197,7 +213,7 @@ def test_cli_attachment_and_submission_warn_about_unknown_cost(tmp_path, monkeyp
     assert result.exit_code == 0, result.stdout
     assert "Total cost is unknown" in result.stdout
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     result = runner.invoke(app, ["submit", str(run), "--yes"])
     assert result.exit_code == 0, result.stdout
     assert "File input cost is unknown" in result.stdout

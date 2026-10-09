@@ -39,12 +39,15 @@ class ProviderAdapter(ABC):
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def get_provider(name: str) -> ProviderAdapter:
+def get_provider(name: str, *, base_url: str | None = None, api_key: str | None = None) -> ProviderAdapter:
     if name == "openai":
         from .openai import OpenAIAdapter
         return OpenAIAdapter()
     if name == "anthropic":
         from .anthropic import AnthropicAdapter
         return AnthropicAdapter()
+    if name == "openai_compatible":
+        from .openai_compatible import OpenAICompatibleAdapter
+        return OpenAICompatibleAdapter(base_url=base_url, api_key=api_key)
     raise ValueError(f"Unsupported provider: {name}")
 

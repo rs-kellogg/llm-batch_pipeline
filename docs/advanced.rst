@@ -208,6 +208,47 @@ The command creates a sibling directory named
 Comparison is local and free. It does not use another model to adjudicate
 differences; the exported disagreements are intended for researcher review.
 
+Run against a local Ollama or vLLM server
+------------------------------------------
+
+The ``openai_compatible`` provider sends requests to any server that speaks
+the OpenAI Chat Completions wire format — this covers a local `Ollama
+<https://ollama.com>`_ install and a `vLLM
+<https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html>`_
+OpenAI-compatible server without any code changes, just a different
+``base_url``.
+
+Start a server with an OpenAI-compatible endpoint, for example:
+
+.. code-block:: console
+
+   $ ollama serve
+   $ ollama pull llama3.1:8b
+   # or: vllm serve meta-llama/Llama-3.1-8B-Instruct --port 8000
+
+Then add a ``providers.openai_compatible`` block to ``project.yaml`` — see
+:doc:`project_settings` for the full field reference — and prepare a run the
+same way as for ``openai``/``anthropic``:
+
+.. code-block:: console
+
+   $ kllm-batch prepare -c my-project/project.yaml --provider openai_compatible \
+       --sample-size 10 --seed 42
+   $ kllm-batch submit SAMPLE_RUN_DIR --yes
+
+This provider only supports ``execution: sync``: neither Ollama nor vLLM
+expose an asynchronous batch-job API like OpenAI Batches or Anthropic
+Message Batches, so there is no remote batch to submit, poll, or cancel.
+``prepare --execution batch`` is rejected immediately for this provider; a
+pilot selection (``--sample-size``/``--ids-file``) already defaults to sync.
+
+Structured output compatibility varies by server and version: the adapter
+asks for ``response_format: {"type": "json_schema", ...}``, which requires a
+reasonably recent Ollama release or a vLLM structured-output/guided-decoding
+backend (such as outlines, xgrammar, or guidance). If your server silently
+ignores the schema, responses may fail local JSON-schema validation and show
+up in ``outputs/failures.jsonl`` rather than ``outputs/results.parquet``.
+
 Configure a project in depth
 ----------------------------
 
@@ -241,7 +282,9 @@ property as required, and express optional values with a nullable type such as
 The Anthropic adapter converts nullable type arrays into equivalent ``anyOf``
 branches and moves unsupported numeric or length bounds into provider schema
 descriptions. The original project schema remains unchanged and is enforced
-during local response validation.
+during local response validation. The ``openai`` and ``openai_compatible``
+adapters pass the project schema through unmodified, since both targets
+accept the same ``json_schema`` subset.
 
 For structured extraction, use nullable fields when a fact may be absent and
 instruct the model to return ``null`` rather than infer unsupported details.

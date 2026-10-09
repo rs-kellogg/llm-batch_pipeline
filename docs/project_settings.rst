@@ -129,14 +129,19 @@ Providers and budget
            effort: low
      anthropic:
        model: claude-haiku-4-5
+     openai_compatible:
+       model: llama3.1:8b
+       base_url: http://localhost:11434/v1
+       sync_input_price_per_million: 0
+       sync_output_price_per_million: 0
 
    budget:
      max_estimated_usd: 5.0
 
 * ``providers`` — the models available to this project. ``prepare --provider
-  openai`` or ``prepare --provider anthropic`` chooses one for a run; listing
-  providers here does not contact them. Credentials come from environment
-  variables, not this file.
+  openai``, ``prepare --provider anthropic``, or ``prepare --provider
+  openai_compatible`` chooses one for a run; listing providers here does not
+  contact them. Credentials come from environment variables, not this file.
 * ``options`` — provider-native generation settings copied into every request
   for that provider. The starter uses low reasoning effort for the OpenAI
   reasoning model and leaves Anthropic options unset, so Claude uses the
@@ -183,6 +188,39 @@ configuration, so their provider request keys cannot be supplied under
 ``options``. After preparation, inspect the exact settings in
 ``RUN_DIR/api_requests/segment_*.jsonl`` and the normalized copy in
 ``RUN_DIR/manifest.json`` under ``provider_options`` before submission.
+
+``openai_compatible``: self-hosted Ollama and vLLM servers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``openai_compatible`` sends requests to any server that implements the
+OpenAI Chat Completions wire format — most commonly a local Ollama install
+(``http://localhost:11434/v1``) or a vLLM OpenAI-compatible server
+(``http://localhost:8000/v1``). Unlike ``openai``/``anthropic``, this
+provider requires two extra fields:
+
+* ``base_url`` — **required**. The OpenAI-compatible endpoint to send
+  requests to.
+* ``api_key_env_var`` — optional. The name of an environment variable
+  holding a bearer token, only needed if your server sits behind auth (most
+  local deployments do not require one). As with every other provider,
+  the key's *value* never goes in ``project.yaml`` — only the variable name
+  does. If omitted, a non-secret placeholder key is sent, since the
+  underlying SDK requires a non-empty string.
+
+This provider only supports ``execution: sync`` (``prepare --execution
+sync``, or a ``--sample-size``/``--ids-file`` pilot, which defaults to sync
+automatically): neither Ollama nor vLLM expose an asynchronous batch-job API
+like OpenAI Batches or Anthropic Message Batches, so there is no
+submit/status/cancel/download lifecycle to use here. Preparing with
+``--execution batch`` fails immediately, before any run directory is
+created.
+
+Because there is no built-in price table for arbitrary local model names,
+set ``sync_input_price_per_million`` and ``sync_output_price_per_million``
+explicitly — typically ``0`` for self-hosted compute you already pay for
+another way — or ``prepare`` will refuse to proceed with "no pricing is
+configured". File attachments (:doc:`file_attachments`) are not supported
+for this provider.
 
 See :doc:`installation` for credentials and :doc:`advanced` for provider
 options, pricing overrides, and batch limits.

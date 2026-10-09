@@ -103,7 +103,7 @@ def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, mo
     config = tmp_path / "project.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
 
     assert runner.invoke(app, ["validate", "-c", str(config)]).exit_code == 0
     assert runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai", "--sample-size", "4", "--seed", "42"]).exit_code == 0
@@ -142,6 +142,32 @@ def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, mo
     assert runner.invoke(app, ["compare", str(run), str(run)]).exit_code == 0
 
 
+def test_prepare_command_rejects_openai_compatible_batch_execution(example_config, tmp_path, monkeypatch):
+    raw = yaml.safe_load(example_config.read_text())
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
+    raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
+    raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
+    raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
+    raw["prompt"]["context"]["codebook"]["path"] = str(example_config.parent / "context" / "codebook.csv")
+    raw["output"]["runs_directory"] = str(tmp_path / "runs")
+    raw["providers"]["openai_compatible"] = {
+        "model": "llama3.1:8b",
+        "base_url": "http://localhost:11434/v1",
+        "sync_input_price_per_million": 0,
+        "sync_output_price_per_million": 0,
+    }
+    config = tmp_path / "project.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    result = runner.invoke(
+        app, ["prepare", "-c", str(config), "--provider", "openai_compatible", "--execution", "batch"]
+    )
+
+    assert result.exit_code == 1
+    assert "only supports execution='sync'" in result.stdout
+    assert not (tmp_path / "runs").exists()
+
+
 def test_estimate_cost_command_projects_from_pilot(example_config, tmp_path, monkeypatch):
     raw = yaml.safe_load(example_config.read_text())
     raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
@@ -153,7 +179,7 @@ def test_estimate_cost_command_projects_from_pilot(example_config, tmp_path, mon
     config = tmp_path / "project.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
 
     assert runner.invoke(
         app, ["prepare", "-c", str(config), "--provider", "openai", "--sample-size", "3", "--seed", "42"]
@@ -195,7 +221,7 @@ def test_submit_warns_only_when_resuming_partial_sync_run(example_config, tmp_pa
     config = tmp_path / "project.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
 
     prepared = runner.invoke(
         app,
@@ -235,7 +261,7 @@ def test_cancel_command_cancels_a_submitted_run(example_config, tmp_path, monkey
     config = tmp_path / "project.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
 
     assert runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai", "--execution", "batch"]).exit_code == 0
     run = next((tmp_path / "runs").iterdir())
@@ -324,7 +350,7 @@ def test_submit_command_targets_segment_range(
     config = tmp_path / "project.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     run = prepare_run(config, "openai", execution="batch")
 
     submitted = runner.invoke(
@@ -381,7 +407,7 @@ def test_segment_range_cli_validation_happens_before_provider_calls(
     config = tmp_path / "project.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
 
     batch_run = prepare_run(config, "openai", execution="batch")
     invalid = runner.invoke(
@@ -447,7 +473,7 @@ def test_cancel_command_targets_one_segment(
     config = tmp_path / "project.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
     adapter = RecordingAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: adapter)
     run = prepare_run(config, "openai", execution="batch")
     submit_run(run, adapter, segment_range=(0, 2))
     target_batch_id = load_state(run)["segments"][1]["remote_batch_id"]
@@ -488,7 +514,7 @@ def test_sync_watch_prints_each_poll_status(example_config, tmp_path, monkeypatc
     config = tmp_path / "project.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
     fake = DelayedAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     monkeypatch.setattr(core.time, "sleep", lambda seconds: None)
 
     assert runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai"]).exit_code == 0

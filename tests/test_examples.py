@@ -203,7 +203,7 @@ def test_multisegment_retry_fixture_is_portable_and_prepares_child(
 def test_multisegment_retry_complete_fixture_child_merge(tmp_path, monkeypatch):
     example = _copy_example(tmp_path, "grant_coding_retry")
     adapter = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: adapter)
     parent = _materialize_retry_fixture(example, "openai")
     child = prepare_retry(parent)
     submit_run(child, adapter)

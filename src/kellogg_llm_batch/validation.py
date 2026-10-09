@@ -130,7 +130,7 @@ def _validate_project(config_or_path: ProjectConfig | str | Path, report_path: s
     estimates = {name: estimate_cost(config, name, request_texts).model_dump() for name in config.providers}
     segment_estimates = {}
     for provider_name, settings in config.providers.items():
-        adapter = get_provider(provider_name)
+        adapter = get_provider(provider_name, base_url=settings.base_url, api_key=settings.resolve_api_key())
         max_requests = settings.max_requests_per_batch or adapter.default_max_requests
         max_bytes = settings.max_batch_bytes or adapter.default_max_bytes
         sizes = []

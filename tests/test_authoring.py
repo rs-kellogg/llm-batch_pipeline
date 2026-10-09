@@ -184,7 +184,7 @@ def test_gui_generated_project_prepares_with_existing_pipeline(example_config, t
     draft = _configured_draft(example_config, tmp_path)
     project_file = save_project_draft(draft).project_file
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
 
     run = prepare_run(project_file, "openai", sample_size=2, seed=42)
     manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))

@@ -106,7 +106,7 @@ def test_scaffold_codebook_schema_and_preview_agree(tmp_path):
 def test_scaffold_prepares_four_record_pilot_locally(tmp_path, monkeypatch):
     root = scaffold_project(tmp_path / "project")
     adapter = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: adapter)
 
     run = prepare_run(root / "project.yaml", "openai", sample_size=4, seed=42)
     manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))

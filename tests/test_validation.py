@@ -57,6 +57,39 @@ def test_generation_seed_is_rejected_with_selection_guidance(
     assert "select input rows only" in str(exc.value)
 
 
+def test_openai_compatible_requires_base_url(example_config, tmp_path):
+    raw = yaml.safe_load(example_config.read_text())
+    _absolute_support_paths(raw, example_config)
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
+    raw["providers"]["openai_compatible"] = {"model": "llama3.1:8b"}
+    config = tmp_path / "missing-base-url.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    with pytest.raises(ProjectValidationError) as exc:
+        validate_project(config)
+
+    assert "base_url is required" in str(exc.value)
+
+
+def test_openai_compatible_validates_with_base_url_and_sync_pricing(example_config, tmp_path):
+    raw = yaml.safe_load(example_config.read_text())
+    _absolute_support_paths(raw, example_config)
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
+    raw["providers"]["openai_compatible"] = {
+        "model": "llama3.1:8b",
+        "base_url": "http://localhost:11434/v1",
+        "sync_input_price_per_million": 0,
+        "sync_output_price_per_million": 0,
+    }
+    config = tmp_path / "openai-compatible.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    report = validate_project(config)
+
+    assert report["valid"] is True
+    assert report["cost_estimates"]["openai_compatible"]["estimated_usd"] is None
+
+
 @pytest.mark.parametrize(
     ("filename", "code"),
     [("invalid_duplicate_ids.csv", "duplicate_record_id"), ("invalid_duplicate_content.csv", "duplicate_content")],

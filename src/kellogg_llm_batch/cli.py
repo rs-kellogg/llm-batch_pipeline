@@ -176,11 +176,11 @@ def _print_validation(report: dict) -> None:
 @app.command("prepare")
 def prepare_command(
     config: Path = typer.Option(..., "--config", "-c", help="Path to project.yaml."),
-    provider: str = typer.Option(..., help="Configured provider: openai or anthropic."),
+    provider: str = typer.Option(..., help="Configured provider: openai, anthropic, or openai_compatible."),
     sample_size: Optional[int] = typer.Option(None, min=1, help="Prepare a deterministic random sample instead of all rows."),
     seed: Optional[int] = typer.Option(None, help="Random seed used with --sample-size; defaults to evaluation.random_seed in project.yaml."),
     ids_file: Optional[Path] = typer.Option(None, help="UTF-8 text file containing one source record ID per line, with no header."),
-    execution: Optional[str] = typer.Option(None, help="Execution mode: sync or batch. Defaults to sync for a selection and batch for all rows."),
+    execution: Optional[str] = typer.Option(None, help="Execution mode: sync or batch. Defaults to sync for a selection and batch for all rows. The openai_compatible provider supports only sync."),
 ):
     """Select records and create an immutable, inspectable, costed run.
 

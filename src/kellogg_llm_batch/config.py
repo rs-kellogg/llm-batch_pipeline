@@ -97,6 +97,8 @@ class PromptSection(StrictModel):
 
 class ProviderSection(StrictModel):
     model: str
+    base_url: str | None = None
+    api_key_env_var: str | None = None
     max_requests_per_batch: int | None = Field(default=None, gt=0)
     max_batch_bytes: int | None = Field(default=None, gt=0)
     options: dict[str, Any] = Field(default_factory=dict)
@@ -112,6 +114,18 @@ class ProviderSection(StrictModel):
         if (self.sync_input_price_per_million is None) != (self.sync_output_price_per_million is None):
             raise ValueError("sync_input_price_per_million and sync_output_price_per_million must be set together")
         return self
+
+    def resolve_api_key(self) -> str | None:
+        if self.api_key_env_var:
+            import os
+            value = os.environ.get(self.api_key_env_var)
+            if not value:
+                raise ValueError(
+                    f"Environment variable {self.api_key_env_var!r} referenced by "
+                    "providers.*.api_key_env_var is not set or is empty"
+                )
+            return value
+        return None
 
 
 class BudgetSection(StrictModel):
@@ -145,12 +159,17 @@ class ProjectConfig(StrictModel):
     @field_validator("providers")
     @classmethod
     def supported_providers(cls, value: dict[str, ProviderSection]):
-        unsupported = set(value) - {"openai", "anthropic"}
+        unsupported = set(value) - {"openai", "anthropic", "openai_compatible"}
         if unsupported:
             raise ValueError(f"unsupported providers: {sorted(unsupported)}")
         if not value:
             raise ValueError("at least one provider is required")
         for provider, settings in value.items():
+            if provider == "openai_compatible" and not settings.base_url:
+                raise ValueError(
+                    "providers.openai_compatible.base_url is required (e.g. "
+                    "http://localhost:11434/v1 for Ollama or http://localhost:8000/v1 for vLLM)"
+                )
             try:
                 validate_provider_options(provider, settings.options)
             except ValueError as exc:

@@ -72,7 +72,7 @@ def _build_requests(config: ProjectConfig, provider_name: str, selected_ids: set
     context = load_context(config)
     schema = wrapped_schema(load_row_schema(config))
     settings = config.providers[provider_name]
-    adapter = get_provider(provider_name)
+    adapter = get_provider(provider_name, base_url=settings.base_url, api_key=settings.resolve_api_key())
     canonical: list[CanonicalRequest] = []
     payloads: list[dict[str, Any]] = []
     for index, start in enumerate(range(0, len(records), config.task.rows_per_request)):
@@ -184,11 +184,17 @@ def prepare_run(
     execution = execution or ("sync" if purpose == "pilot" else "batch")
     if execution not in {"batch", "sync"}:
         raise ValueError("execution must be 'batch' or 'sync'")
+    if provider == "openai_compatible" and execution == "batch":
+        raise ValueError(
+            "Provider 'openai_compatible' only supports execution='sync'; it has no batch "
+            "submit/status/cancel/download implementation. Pass --execution sync (or a "
+            "--sample-size/--ids-file pilot, which defaults to sync) when preparing this provider."
+        )
     records, canonical, payloads, source, schema = _build_requests(config, provider, selected_ids)
     if not records:
         raise ValueError("No records selected for preparation")
-    adapter = get_provider(provider)
     settings = config.providers[provider]
+    adapter = get_provider(provider, base_url=settings.base_url, api_key=settings.resolve_api_key())
     max_requests = settings.max_requests_per_batch or adapter.default_max_requests
     max_bytes = settings.max_batch_bytes or adapter.default_max_bytes
     segments = _split_payloads(payloads, max_requests, max_bytes)
@@ -338,6 +344,9 @@ def _write_review(run_dir: Path, manifest: dict[str, Any], records: list[Any]) -
     if manifest["provider"] == "openai":
         prompt_locations = "`body.instructions` (system prompt) and `body.input` (user prompt)"
         inspection_command = "jq -r '.body.instructions, .body.input' api_requests/segment_*.jsonl"
+    elif manifest["provider"] == "openai_compatible":
+        prompt_locations = "`body.messages[0].content` (system prompt) and `body.messages[1].content` (user prompt)"
+        inspection_command = "jq -r '.body.messages[0].content, .body.messages[1].content' api_requests/segment_*.jsonl"
     else:
         prompt_locations = "`params.system` (system prompt) and `params.messages[].content` (user prompt)"
         inspection_command = "jq -r '.params.system, .params.messages[].content' api_requests/segment_*.jsonl"
@@ -769,6 +778,17 @@ def batch_submission_summary(
     }
 
 
+def _adapter_for_run(run_dir: Path, manifest: dict[str, Any]) -> ProviderAdapter:
+    provider_name = manifest["provider"]
+    snapshot_path = run_dir / "project_snapshot" / "project.yaml"
+    settings = None
+    if snapshot_path.exists():
+        settings = load_config(snapshot_path).providers.get(provider_name)
+    base_url = settings.base_url if settings else None
+    api_key = settings.resolve_api_key() if settings else None
+    return get_provider(provider_name, base_url=base_url, api_key=api_key)
+
+
 def submit_run(
     run: str | Path,
     adapter: ProviderAdapter | None = None,
@@ -778,7 +798,7 @@ def submit_run(
 ) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
-    adapter = adapter or get_provider(manifest["provider"])
+    adapter = adapter or _adapter_for_run(run_dir, manifest)
     _verify_prepared_artifacts(run_dir, manifest)
     if manifest.get("execution", "batch") == "sync":
         if segment_range is not None:
@@ -817,7 +837,7 @@ def submit_run(
 def status_run(run: str | Path, adapter: ProviderAdapter | None = None) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
-    adapter = adapter or get_provider(manifest["provider"])
+    adapter = adapter or _adapter_for_run(run_dir, manifest)
     with RunLock(run_dir):
         state = load_state(run_dir)
         for segment in state["segments"]:
@@ -854,7 +874,7 @@ def cancel_run(
             "Segment ranges are available only for batch runs; synchronous runs do not "
             "create remote segment jobs"
         )
-    adapter = adapter or get_provider(manifest["provider"])
+    adapter = adapter or _adapter_for_run(run_dir, manifest)
     with RunLock(run_dir):
         state = load_state(run_dir)
         selected = _select_segments(state, segment_range)
@@ -916,7 +936,7 @@ def sync_run(
 ) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
-    adapter = adapter or get_provider(manifest["provider"])
+    adapter = adapter or _adapter_for_run(run_dir, manifest)
     (run_dir / "raw_responses").mkdir(exist_ok=True)
     while True:
         state = status_run(run_dir, adapter)

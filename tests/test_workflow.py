@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -29,7 +30,7 @@ def _temporary_config(example_config, tmp_path):
 
 
 def _segmented_run(example_config, tmp_path, monkeypatch, adapter, segments=4):
-    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: adapter)
     config = _temporary_config(example_config, tmp_path)
     raw = yaml.safe_load(config.read_text(encoding="utf-8"))
     raw["providers"]["openai"]["max_requests_per_batch"] = 1
@@ -41,7 +42,7 @@ def _segmented_run(example_config, tmp_path, monkeypatch, adapter, segments=4):
 
 def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     run = prepare_run(config, "openai")
     assert (run / "manifest.json").exists()
@@ -122,7 +123,7 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
 
 def test_estimate_cost_extrapolates_from_actual_usage(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     pilot = prepare_run(config, "openai", sample_size=3, seed=1)
     submit_run(pilot, fake)
@@ -161,7 +162,7 @@ def test_estimate_cost_extrapolates_from_actual_usage(example_config, tmp_path, 
 
 def test_estimate_cost_from_small_batch_retains_batch_rates(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     pilot = prepare_run(config, "openai", sample_size=3, seed=1, execution="batch")
     submit_run(pilot, fake)
@@ -180,7 +181,7 @@ def test_estimate_cost_from_small_batch_retains_batch_rates(example_config, tmp_
 
 def test_sync_and_batch_pilots_project_same_batch_cost(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     sync_pilot = prepare_run(config, "openai", sample_size=3, seed=1, execution="sync")
     batch_pilot = prepare_run(config, "openai", sample_size=3, seed=1, execution="batch")
@@ -198,7 +199,7 @@ def test_sync_and_batch_pilots_project_same_batch_cost(example_config, tmp_path,
 
 def test_estimate_cost_uses_snapshot_price_overrides(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     raw = yaml.safe_load(config.read_text(encoding="utf-8"))
     raw["providers"]["openai"].update(
@@ -234,7 +235,7 @@ def test_estimate_cost_scales_attempted_not_only_valid_rows(example_config, tmp_
             return outcome
 
     fake = PartlyInvalidAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     pilot = prepare_run(config, "openai", sample_size=3, seed=1)
     submit_run(pilot, fake)
@@ -250,7 +251,7 @@ def test_estimate_cost_scales_attempted_not_only_valid_rows(example_config, tmp_
 
 def test_estimate_cost_rejects_invalid_execution_metadata(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     pilot = prepare_run(config, "openai", sample_size=3, seed=1)
     submit_run(pilot, fake)
@@ -265,7 +266,7 @@ def test_estimate_cost_rejects_invalid_execution_metadata(example_config, tmp_pa
 
 def test_estimate_cost_requires_batch_pricing(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     raw = yaml.safe_load(config.read_text(encoding="utf-8"))
     raw["providers"]["openai"].update(
@@ -283,7 +284,7 @@ def test_estimate_cost_requires_batch_pricing(example_config, tmp_path, monkeypa
 
 def test_estimate_cost_requires_processed_usage(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     run = prepare_run(config, "openai")
     with pytest.raises(ValueError, match="sync and process"):
@@ -292,7 +293,7 @@ def test_estimate_cost_requires_processed_usage(example_config, tmp_path, monkey
 
 def test_consolidated_request_map_supports_multiple_segments(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     raw = yaml.safe_load(config.read_text(encoding="utf-8"))
     raw["providers"]["openai"]["max_requests_per_batch"] = 2
@@ -417,7 +418,7 @@ def test_segment_range_is_rejected_for_synchronous_runs(
     example_config, tmp_path, monkeypatch
 ):
     adapter = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: adapter)
     run = prepare_run(
         _temporary_config(example_config, tmp_path),
         "openai",
@@ -436,7 +437,7 @@ def test_segment_range_is_rejected_for_synchronous_runs(
 
 def test_compare_exports_disagreements(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     run_a = prepare_run(config, "openai")
     run_b = prepare_run(config, "openai")
@@ -453,7 +454,7 @@ def test_compare_exports_disagreements(example_config, tmp_path, monkeypatch):
 
 def test_prepare_sample_then_submit_sync_uses_exact_saved_requests(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     raw = yaml.safe_load(config.read_text(encoding="utf-8"))
     raw["input"]["fields_sent"] = {
@@ -511,7 +512,7 @@ class InterruptOnceAdapter(FakeAdapter):
 
 def test_sync_resume_skips_checkpointed_requests(example_config, tmp_path, monkeypatch):
     adapter = InterruptOnceAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: adapter)
     run = prepare_run(_temporary_config(example_config, tmp_path), "openai", sample_size=4, seed=17)
 
     with pytest.raises(KeyboardInterrupt):
@@ -527,7 +528,7 @@ def test_sync_resume_skips_checkpointed_requests(example_config, tmp_path, monke
 
 def test_sync_resume_blocks_partial_checkpoint_line(example_config, tmp_path, monkeypatch):
     adapter = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: adapter)
     run = prepare_run(_temporary_config(example_config, tmp_path), "openai", sample_size=4, seed=17)
     raw_dir = run / "raw_responses"
     raw_dir.mkdir()
@@ -547,7 +548,7 @@ class SyncRequestErrorAdapter(FakeAdapter):
 
 def test_sync_request_error_is_available_for_manual_retry(example_config, tmp_path, monkeypatch):
     adapter = SyncRequestErrorAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: adapter)
     run = prepare_run(_temporary_config(example_config, tmp_path), "openai", sample_size=4, seed=17)
     state = submit_run(run, adapter)
     assert state["status"] == "completed_with_failures"
@@ -561,7 +562,7 @@ def test_sync_request_error_is_available_for_manual_retry(example_config, tmp_pa
 
 def test_prepare_with_explicit_ids_and_request_integrity(example_config, tmp_path, monkeypatch):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     ids_file = tmp_path / "pilot_ids.txt"
     ids_file.write_text("GRANT-007\nGRANT-002\n", encoding="utf-8")
@@ -587,7 +588,7 @@ def test_prepare_with_explicit_ids_and_request_integrity(example_config, tmp_pat
     ],
 )
 def test_prepare_rejects_invalid_selection_options(example_config, tmp_path, monkeypatch, kwargs, message):
-    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: FakeAdapter())
     config = _temporary_config(example_config, tmp_path)
     with pytest.raises(ValueError, match=message):
         prepare_run(config, "openai", **kwargs)
@@ -595,7 +596,7 @@ def test_prepare_rejects_invalid_selection_options(example_config, tmp_path, mon
 
 
 def test_prepare_rejects_duplicate_and_unknown_explicit_ids(example_config, tmp_path, monkeypatch):
-    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: FakeAdapter())
     config = _temporary_config(example_config, tmp_path)
     ids_file = tmp_path / "pilot_ids.txt"
     ids_file.write_text("GRANT-002\nGRANT-002\n", encoding="utf-8")
@@ -617,7 +618,7 @@ def test_prepare_rejects_duplicate_and_unknown_explicit_ids(example_config, tmp_
     ],
 )
 def test_prepare_allows_explicit_execution_override(example_config, tmp_path, monkeypatch, kwargs, purpose, execution):
-    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: FakeAdapter())
     config = _temporary_config(example_config, tmp_path)
     run = prepare_run(config, "openai", **kwargs)
     manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
@@ -639,7 +640,7 @@ class IncompleteAdapter(FakeAdapter):
 
 def test_manual_retry_contains_only_failed_rows(example_config, tmp_path, monkeypatch):
     fake = IncompleteAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     config = _temporary_config(example_config, tmp_path)
     run = prepare_run(config, "openai")
     submit_run(run, fake)
@@ -665,7 +666,7 @@ def test_retry_selects_provider_cancellation_categories(
     example_config, tmp_path, monkeypatch, category
 ):
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     run = prepare_run(_temporary_config(example_config, tmp_path), "openai")
     selected_id = str(
         pd.read_parquet(run / "input_snapshot" / "canonical_input.parquet").iloc[0][
@@ -697,7 +698,7 @@ def test_retry_selects_provider_cancellation_categories(
 
 def test_retry_blocks_if_source_changed(example_config, tmp_path, monkeypatch):
     fake = IncompleteAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     source = tmp_path / "grants.csv"
     shutil.copy2(example_config.parent / "data" / "input-data.csv", source)
     config = _temporary_config(example_config, tmp_path)
@@ -713,7 +714,7 @@ def test_retry_blocks_if_source_changed(example_config, tmp_path, monkeypatch):
 
 
 def test_state_recovers_last_valid_copy(example_config, tmp_path, monkeypatch):
-    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: FakeAdapter())
     run = prepare_run(_temporary_config(example_config, tmp_path), "openai")
     original = load_state(run)
     save_state(run, {**original, "status": "submitted", "stage": "submitted"})
@@ -724,7 +725,7 @@ def test_state_recovers_last_valid_copy(example_config, tmp_path, monkeypatch):
 
 
 def test_prepare_rejects_run_exceeding_budget(example_config, tmp_path, monkeypatch):
-    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: FakeAdapter())
     config = _temporary_config(example_config, tmp_path)
     raw = yaml.safe_load(config.read_text(encoding="utf-8"))
     raw["budget"]["max_estimated_usd"] = 0.0000001
@@ -736,7 +737,7 @@ def test_prepare_rejects_run_exceeding_budget(example_config, tmp_path, monkeypa
 
 
 def test_prepare_rejects_run_with_no_pricing_configured(example_config, tmp_path, monkeypatch):
-    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: FakeAdapter())
     config = _temporary_config(example_config, tmp_path)
     raw = yaml.safe_load(config.read_text(encoding="utf-8"))
     raw["providers"]["openai"]["model"] = "gpt-unreleased-model"
@@ -748,7 +749,7 @@ def test_prepare_rejects_run_with_no_pricing_configured(example_config, tmp_path
 
 
 def test_prepare_allows_unpriced_model_once_overrides_are_added(example_config, tmp_path, monkeypatch):
-    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: FakeAdapter())
     config = _temporary_config(example_config, tmp_path)
     raw = yaml.safe_load(config.read_text(encoding="utf-8"))
     raw["providers"]["openai"]["model"] = "gpt-unreleased-model"
@@ -1074,7 +1075,7 @@ def test_cancel_failure_preserves_earlier_segment_state(
 
 def test_cancel_run_cancels_submitted_segments_and_marks_run_cancelled(example_config, tmp_path, monkeypatch):
     adapter = RecordingCancelAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: adapter)
     run = prepare_run(_temporary_config(example_config, tmp_path), "openai", execution="batch")
     submit_run(run, adapter)
     submitted_batch_ids = [segment["remote_batch_id"] for segment in load_state(run)["segments"]]
@@ -1090,10 +1091,101 @@ def test_cancel_run_cancels_submitted_segments_and_marks_run_cancelled(example_c
 
 def test_cancel_run_on_unsubmitted_run_calls_provider_for_nothing(example_config, tmp_path, monkeypatch):
     adapter = RecordingCancelAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: adapter)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: adapter)
     run = prepare_run(_temporary_config(example_config, tmp_path), "openai", execution="batch")
 
     state = cancel_run(run, adapter)
 
     assert adapter.cancelled_batch_ids == []
     assert all(segment["status"] == "prepared" for segment in state["segments"])
+
+
+def _add_openai_compatible_provider(raw, *, with_sync_pricing=True, api_key_env_var=None):
+    raw["providers"]["openai_compatible"] = {
+        "model": "llama3.1:8b",
+        "base_url": "http://localhost:11434/v1",
+    }
+    if with_sync_pricing:
+        raw["providers"]["openai_compatible"]["sync_input_price_per_million"] = 0
+        raw["providers"]["openai_compatible"]["sync_output_price_per_million"] = 0
+    if api_key_env_var:
+        raw["providers"]["openai_compatible"]["api_key_env_var"] = api_key_env_var
+
+
+def test_openai_compatible_prepare_rejects_batch_execution(example_config, tmp_path):
+    config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    _add_openai_compatible_provider(raw)
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="only supports execution='sync'"):
+        prepare_run(config, "openai_compatible", execution="batch")
+
+
+def test_openai_compatible_prepare_and_submit_sync_end_to_end(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
+    config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    _add_openai_compatible_provider(raw)
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    run = prepare_run(config, "openai_compatible", execution="sync")
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["execution"] == "sync"
+    assert manifest["provider"] == "openai_compatible"
+
+    state = submit_run(run, fake)
+    assert state["status"] == "completed"
+    assert state["stage"] == "audited"
+    results = pd.read_parquet(run / "outputs" / "results.parquet")
+    assert len(results) == 10
+    assert audit_run(run)["complete"] is True
+
+
+def test_openai_compatible_resolves_client_base_url_and_env_api_key(example_config, tmp_path, monkeypatch):
+    captured = {}
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            user_content = kwargs["messages"][1]["content"]
+            records = json.loads(user_content.split("Classify every record below:", 1)[1].strip())
+            results = [
+                {
+                    "record_id": record["record_id"],
+                    "primary_label": "other",
+                    "secondary_label": None,
+                    "confidence": 0.8,
+                    "justification": "Synthetic test result.",
+                }
+                for record in records
+            ]
+            return SimpleNamespace(
+                model_dump=lambda: {
+                    "model": "llama3.1:8b",
+                    "choices": [{"message": {"content": json.dumps({"results": results})}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                }
+            )
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    monkeypatch.setenv("KLLM_TEST_API_KEY", "test-secret-key")
+
+    config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    _add_openai_compatible_provider(raw, api_key_env_var="KLLM_TEST_API_KEY")
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    run = prepare_run(config, "openai_compatible", sample_size=3, seed=17)
+    submit_run(run)
+
+    assert captured["base_url"] == "http://localhost:11434/v1"
+    assert captured["api_key"] == "test-secret-key"
+    results = pd.read_parquet(run / "outputs" / "results.parquet")
+    assert len(results) == 3
