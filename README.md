@@ -4,10 +4,23 @@
 classification and structured extraction with the OpenAI and Anthropic batch
 APIs.
 
-**[Read the complete documentation](https://rs-kellogg.github.io/llm-batch_pipeline/)**
+## Research workflow first
 
-Building a related tool or research pipeline? Start with the reusable
-[LLM research pipeline checklist](RESEARCH_LLM_PIPELINE_CHECKLIST.md).
+Writing code that calls an LLM is increasingly easy. The harder task is
+building a research workflow whose inputs, decisions, costs, failures, and
+outputs can be reviewed and reproduced. This project follows the lifecycle
+**`validate → prepare → inspect → submit → sync → audit`**:
+
+- Validate data, identifiers, prompts, schemas, and limits before contacting a model.
+- Prepare exact provider requests and inspect what will leave the computer.
+- Start with a deterministic pilot before scaling to a complete batch.
+- Preserve source data and raw responses; place retries in separate child runs.
+- Audit completeness, provenance, and cost before treating results as analysis-ready.
+
+See the reusable [LLM research pipeline checklist](RESEARCH_LLM_PIPELINE_CHECKLIST.md)
+for the expanded guidance.
+
+**[Read the complete documentation](https://rs-kellogg.github.io/llm-batch_pipeline/)**
 
 The package keeps local preparation separate from paid API operations.
 `init`, `validate`, and `prepare` are local. `submit` executes the exact
