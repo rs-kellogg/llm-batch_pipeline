@@ -1,0 +1,86 @@
+{
+  "requests": [
+    {
+      "custom_id": "request_00000000",
+      "batch_id": "batch_6ac82b843c0881909e2f79fe0ea46dbb",
+      "model_returned": "gpt-5.4-mini-2026-03-17",
+      "input_tokens": 539,
+      "output_tokens": 151,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000001",
+      "batch_id": "batch_6ac82b843c0881909e2f79fe0ea46dbb",
+      "model_returned": "gpt-5.4-mini-2026-03-17",
+      "input_tokens": 533,
+      "output_tokens": 171,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000002",
+      "batch_id": "batch_6ac82b852f548190b519f509e1624fe8",
+      "model_returned": "gpt-5.4-mini-2026-03-17",
+      "input_tokens": 532,
+      "output_tokens": 226,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000003",
+      "batch_id": "batch_6ac82b852f548190b519f509e1624fe8",
+      "model_returned": "gpt-5.4-mini-2026-03-17",
+      "input_tokens": 532,
+      "output_tokens": 198,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000004",
+      "batch_id": "batch_6ac82b85d69881909e04b7cefcd25d14",
+      "model_returned": "gpt-5.4-mini-2026-03-17",
+      "input_tokens": 541,
+      "output_tokens": 205,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000005",
+      "batch_id": "batch_6ac82b85d69881909e04b7cefcd25d14",
+      "model_returned": "gpt-5.4-mini-2026-03-17",
+      "input_tokens": 535,
+      "output_tokens": 191,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000006",
+      "batch_id": "batch_6ac82b86fde481908a1beb4669526ec1",
+      "model_returned": "gpt-5.4-mini-2026-03-17",
+      "input_tokens": 527,
+      "output_tokens": 200,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000007",
+      "batch_id": "batch_6ac82b86fde481908a1beb4669526ec1",
+      "model_returned": "gpt-5.4-mini-2026-03-17",
+      "input_tokens": 533,
+      "output_tokens": 188,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000008",
+      "batch_id": "batch_6ac82b87b94881909ee993f66d3b1fd3",
+      "model_returned": "gpt-5.4-mini-2026-03-17",
+      "input_tokens": 537,
+      "output_tokens": 156,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000009",
+      "batch_id": "batch_6ac82b87b94881909ee993f66d3b1fd3",
+      "model_returned": "gpt-5.4-mini-2026-03-17",
+      "input_tokens": 532,
+      "output_tokens": 224,
+      "status": "succeeded"
+    }
+  ],
+  "input_tokens": 5341,
+  "output_tokens": 1910
+}

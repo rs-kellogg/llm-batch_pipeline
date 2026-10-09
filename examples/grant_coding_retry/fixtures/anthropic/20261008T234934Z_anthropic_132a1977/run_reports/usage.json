@@ -1,0 +1,86 @@
+{
+  "requests": [
+    {
+      "custom_id": "request_00000000",
+      "batch_id": "msgbatch_018xTfsgwA1e2yxxEZrMnvxF",
+      "model_returned": "claude-haiku-4-5-20251001",
+      "input_tokens": 939,
+      "output_tokens": 132,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000001",
+      "batch_id": "msgbatch_018xTfsgwA1e2yxxEZrMnvxF",
+      "model_returned": "claude-haiku-4-5-20251001",
+      "input_tokens": 934,
+      "output_tokens": 176,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000002",
+      "batch_id": "msgbatch_0173FQzG4nMTJuhYzVmiBuBi",
+      "model_returned": "claude-haiku-4-5-20251001",
+      "input_tokens": 930,
+      "output_tokens": 185,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000003",
+      "batch_id": "msgbatch_0173FQzG4nMTJuhYzVmiBuBi",
+      "model_returned": "claude-haiku-4-5-20251001",
+      "input_tokens": 932,
+      "output_tokens": 172,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000005",
+      "batch_id": "msgbatch_01HZrhPEP5MT6V4SQftjVSun",
+      "model_returned": "claude-haiku-4-5-20251001",
+      "input_tokens": 934,
+      "output_tokens": 207,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000004",
+      "batch_id": "msgbatch_01HZrhPEP5MT6V4SQftjVSun",
+      "model_returned": "claude-haiku-4-5-20251001",
+      "input_tokens": 947,
+      "output_tokens": 147,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000007",
+      "batch_id": "msgbatch_01BmbqaJMpttFcswuRVHM7dw",
+      "model_returned": "claude-haiku-4-5-20251001",
+      "input_tokens": 931,
+      "output_tokens": 216,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000006",
+      "batch_id": "msgbatch_01BmbqaJMpttFcswuRVHM7dw",
+      "model_returned": "claude-haiku-4-5-20251001",
+      "input_tokens": 929,
+      "output_tokens": 188,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000009",
+      "batch_id": "msgbatch_01HQFNSoFse2fqDYwaAJwuen",
+      "model_returned": "claude-haiku-4-5-20251001",
+      "input_tokens": 932,
+      "output_tokens": 233,
+      "status": "succeeded"
+    },
+    {
+      "custom_id": "request_00000008",
+      "batch_id": "msgbatch_01HQFNSoFse2fqDYwaAJwuen",
+      "model_returned": "claude-haiku-4-5-20251001",
+      "input_tokens": 944,
+      "output_tokens": 125,
+      "status": "succeeded"
+    }
+  ],
+  "input_tokens": 9352,
+  "output_tokens": 1781
+}

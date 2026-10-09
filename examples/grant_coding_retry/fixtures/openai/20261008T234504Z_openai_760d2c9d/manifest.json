@@ -1,0 +1,90 @@
+{
+  "layout_version": 2,
+  "run_id": "20261008T234504Z_openai_760d2c9d",
+  "created_at": "2026-10-08T23:45:04+00:00",
+  "project": "grant-topic-coding-multisegment-retry",
+  "provider": "openai",
+  "model_requested": "gpt-5.4-mini",
+  "config_path": "__EXAMPLE_ROOT__/project.yaml",
+  "source_path": "__EXAMPLE_ROOT__/data/input-data.csv",
+  "source_sha256": "926cb03b3f295b31953627857ee41a3433ec2ba8f09b0693c043810ca0d87088",
+  "config_sha256": "5a9916d7ebaca21273470648b0159de9b0a0f71bee91a72732b25018579aa0e9",
+  "source_rows": 30,
+  "source_total_rows": 30,
+  "selected_rows": 30,
+  "request_count": 10,
+  "segment_count": 5,
+  "prompt_version": "1.0-retry-smoke-test",
+  "system_prompt_sha256": "91d3e9b7c328f7aa26c39d4f3e1d6c9cd17d2cfcb11e2fd01d50df8673a427ae",
+  "user_prompt_sha256": "6b6ae7e10d8873bfce2d768bbba43f00fc8107f83b257df0eb3a78c1a20e496d",
+  "schema_sha256": "b7b1e38a78565a78644b2d6349acfe839816631e41c8c4714acf5e234839ef8c",
+  "package_version": "0.1.0",
+  "python_version": "3.12.15",
+  "package_versions": {
+    "kellogg-llm-batch": "0.1.0",
+    "openai": "3.26.1",
+    "anthropic": "1.12.1",
+    "pandas": "3.0.6",
+    "pyarrow": "25.0.1",
+    "pydantic": "2.14.0",
+    "pyyaml": "6.0.3",
+    "jsonschema": "4.26.0",
+    "typer": "0.27.3"
+  },
+  "git_commit": "503c4d8fbe9d32ff6de4663160c48d878ee8702b",
+  "provider_options": {
+    "reasoning": {
+      "effort": "low"
+    }
+  },
+  "purpose": "production",
+  "execution": "batch",
+  "selection": {
+    "method": "all"
+  },
+  "gold_columns": {
+    "primary_label": "reference_primary_label"
+  },
+  "gold_labels_file": "input_snapshot/gold_labels.parquet",
+  "parent_run": null,
+  "cost_estimate": {
+    "provider": "openai",
+    "model": "gpt-5.4-mini",
+    "execution": "batch",
+    "request_count": 10,
+    "estimated_input_tokens": 7328,
+    "maximum_output_tokens": 12000,
+    "estimated_usd": 0.029748,
+    "input_price_per_million": 0.375,
+    "output_price_per_million": 2.25,
+    "pricing_as_of": "2026-10-08",
+    "method": "characters_divided_by_four"
+  },
+  "output_options": {
+    "write_parquet": true,
+    "write_csv": true,
+    "runs_directory": "runs"
+  },
+  "context": {
+    "codebook": {
+      "source_path": "__EXAMPLE_ROOT__/context/codebook.csv",
+      "snapshot_path": "project_snapshot/context/codebook.csv",
+      "sha256": "97797706755964125df19625531417dd292e84a3902fac7ae9aa31dd036acb83"
+    }
+  },
+  "prepared_artifact_sha256": {
+    "api_requests/segment_0000.jsonl": "0048dbace7b272c7aa8cac4ad97df01268452de71997bb3db4c01151606bd675",
+    "api_requests/segment_0001.jsonl": "afe14d4afe8d2de2ea3534db3c26ae95ca765daf84845ebb38e6644b38454331",
+    "api_requests/segment_0002.jsonl": "f686062e123611299375864e2b8b85dcb8f7a81c0a14624c50c4528f052508cc",
+    "api_requests/segment_0003.jsonl": "ff588af81789b9e49bd7a90d8245c60c55dc0ce4e781926bc72ed192f9ab0e07",
+    "api_requests/segment_0004.jsonl": "479753435ff93d44153c01ae1d2dcd1dbf8bdaddfafca3055855d11aad6c5f7f",
+    "input_snapshot/canonical_input.parquet": "3f7e711aeeac739ba2e32a166ce90fa682301c50deef5f7ad8d1ffa9bf9a3389",
+    "input_snapshot/gold_labels.parquet": "014d9112327ef93b5b2909d890ec7369669e00978e53ba88562c73c317521124",
+    "input_snapshot/request_map.jsonl": "7cb804663bd9ff701bf252f1cc30fb2ba465b3711ccbb37f8ce70eab15306408",
+    "project_snapshot/context/codebook.csv": "97797706755964125df19625531417dd292e84a3902fac7ae9aa31dd036acb83",
+    "project_snapshot/project.yaml": "5a9916d7ebaca21273470648b0159de9b0a0f71bee91a72732b25018579aa0e9",
+    "project_snapshot/schema.json": "b789dcfc3b1f88091094769f32d9a19384b5622b03dbed42d3605e5de6b61d62",
+    "project_snapshot/system.txt": "91d3e9b7c328f7aa26c39d4f3e1d6c9cd17d2cfcb11e2fd01d50df8673a427ae",
+    "project_snapshot/user.txt": "6b6ae7e10d8873bfce2d768bbba43f00fc8107f83b257df0eb3a78c1a20e496d"
+  }
+}

@@ -1,0 +1,10 @@
+{"segment_index": 0, "custom_id": "request_00000000", "record_ids": ["MRETRY-001", "MRETRY-002", "MRETRY-003"]}
+{"segment_index": 0, "custom_id": "request_00000001", "record_ids": ["MRETRY-004", "MRETRY-005", "MRETRY-006"]}
+{"segment_index": 1, "custom_id": "request_00000002", "record_ids": ["MRETRY-007", "MRETRY-008", "MRETRY-009"]}
+{"segment_index": 1, "custom_id": "request_00000003", "record_ids": ["MRETRY-010", "MRETRY-011", "MRETRY-012"]}
+{"segment_index": 2, "custom_id": "request_00000004", "record_ids": ["MRETRY-013", "MRETRY-014", "MRETRY-015"]}
+{"segment_index": 2, "custom_id": "request_00000005", "record_ids": ["MRETRY-016", "MRETRY-017", "MRETRY-018"]}
+{"segment_index": 3, "custom_id": "request_00000006", "record_ids": ["MRETRY-019", "MRETRY-020", "MRETRY-021"]}
+{"segment_index": 3, "custom_id": "request_00000007", "record_ids": ["MRETRY-022", "MRETRY-023", "MRETRY-024"]}
+{"segment_index": 4, "custom_id": "request_00000008", "record_ids": ["MRETRY-025", "MRETRY-026", "MRETRY-027"]}
+{"segment_index": 4, "custom_id": "request_00000009", "record_ids": ["MRETRY-028", "MRETRY-029", "MRETRY-030"]}
