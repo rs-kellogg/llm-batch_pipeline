@@ -103,7 +103,10 @@ def test_duplicate_inputs_block_before_run(example_config, tmp_path, filename, c
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
     with pytest.raises(ProjectValidationError) as exc:
         validate_project(config)
-    assert code in {finding["code"] for finding in exc.value.report["findings"]}
+    findings_by_code = {finding["code"]: finding for finding in exc.value.report["findings"]}
+    assert code in findings_by_code
+    assert findings_by_code[code]["source_rows"] == [0, 1]
+    assert "source rows [0, 1]" in findings_by_code[code]["message"]
     assert not (tmp_path / "runs").exists()
 
 

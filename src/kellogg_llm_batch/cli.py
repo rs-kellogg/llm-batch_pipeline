@@ -162,6 +162,11 @@ def _print_validation(report: dict) -> None:
     console.print(f"Rows: {report['source_rows']:,} | Requests: {report['request_count']:,}")
     for finding in report["findings"]:
         console.print(f"  {finding['severity'].upper()} {finding['code']}: {finding['message']}")
+    if any(f["code"] in {"duplicate_content", "duplicate_record_id"} for f in report["findings"]):
+        console.print(
+            "[dim]Fix the listed source rows upstream (deduplicate or add a distinguishing "
+            "field) — kllm-batch never auto-selects which duplicate row to keep.[/dim]"
+        )
     for provider, estimate in report["cost_estimates"].items():
         value = "unknown" if estimate["estimated_usd"] is None else f"${estimate['estimated_usd']:.4f}"
         console.print(f"  {provider}: estimated maximum {value}")
@@ -216,6 +221,9 @@ def prepare_command(
         )
         console.print(f"Inspect: {run_dir / 'REVIEW.md'}")
         console.print(f"Submit with: kllm-batch submit {run_dir}")
+    except ProjectValidationError as exc:
+        _print_validation(exc.report)
+        raise typer.Exit(1)
     except Exception as exc:
         _fail(exc)
 

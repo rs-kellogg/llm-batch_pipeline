@@ -35,12 +35,20 @@ def find_duplicate_records(records: Iterable[CanonicalRecord]) -> list[AuditFind
         findings.append(AuditFinding(severity="error", code="missing_record_id", message=f"{len(missing)} row(s) have missing or empty IDs", source_rows=[r.source_row for r in missing[:50]]))
     for record_id, group in ids.items():
         if record_id and len(group) > 1:
-            findings.append(AuditFinding(severity="error", code="duplicate_record_id", message=f"Duplicate ID {record_id!r} occurs {len(group)} times", record_ids=[record_id], source_rows=[r.source_row for r in group]))
+            rows = sorted(r.source_row for r in group)
+            findings.append(AuditFinding(severity="error", code="duplicate_record_id", message=f"Duplicate ID {record_id!r} occurs {len(group)} times at source rows {_format_rows(rows)}", record_ids=[record_id], source_rows=rows))
     for key, group in contents.items():
         if len(group) > 1:
             preview = key[:160] + ("..." if len(key) > 160 else "")
-            findings.append(AuditFinding(severity="error", code="duplicate_content", message=f"Duplicate sent-field content occurs {len(group)} times: {preview}", record_ids=[r.record_id for r in group], source_rows=[r.source_row for r in group]))
+            rows = sorted(r.source_row for r in group)
+            findings.append(AuditFinding(severity="error", code="duplicate_content", message=f"Duplicate sent-field content occurs {len(group)} times at source rows {_format_rows(rows)}: {preview}", record_ids=[r.record_id for r in group], source_rows=rows))
     return findings
+
+
+def _format_rows(rows: list[int], limit: int = 20) -> str:
+    shown = ", ".join(str(r) for r in rows[:limit])
+    suffix = f", +{len(rows) - limit} more" if len(rows) > limit else ""
+    return f"[{shown}{suffix}]"
 
 
 def validate_project(config_or_path: ProjectConfig | str | Path, report_path: str | Path | None = None) -> dict:
