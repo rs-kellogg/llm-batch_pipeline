@@ -1,3 +1,0 @@
-Classify the following job posting:
-
-${records_json}
