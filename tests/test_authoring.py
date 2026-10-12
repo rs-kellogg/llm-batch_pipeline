@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -71,10 +72,7 @@ def test_new_gui_draft_keeps_generic_schema(tmp_path):
     assert list(draft.schema["properties"]) == ["label", "confidence", "justification"]
     assert "enum" not in draft.schema["properties"]["label"]
     assert draft.config["evaluation"]["gold_columns"] == {}
-    assert draft.config["providers"]["openai"]["options"] == {
-        "reasoning": {"effort": "low"}
-    }
-    assert "options" not in draft.config["providers"]["anthropic"]
+    assert "options" not in draft.config["providers"]["openai"]
 
 
 def test_provider_options_json_editor_parser():
@@ -87,8 +85,9 @@ def test_provider_options_json_editor_parser():
         parse_provider_options_json("[]")
 
 
-def test_gui_save_keeps_initialized_gold_mapping(tmp_path):
-    project = scaffold_project(tmp_path / "project")
+def test_gui_save_keeps_initialized_gold_mapping(tmp_path, example_config):
+    project = tmp_path / "project"
+    shutil.copytree(example_config.parent, project)
     draft = load_project_draft(project)
     assert draft.config["evaluation"]["gold_columns"] == {
         "primary_label": "reference_primary_label"

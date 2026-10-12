@@ -5,8 +5,11 @@ Project settings
 
 ``project.yaml`` tells ``kllm-batch`` where to find your data, what to send to
 the model, and how to prepare a run. Paths in this file are relative to the
-directory containing ``project.yaml``. The examples below come from
-``kllm-batch init my-project``; edit them for your own research, then run
+directory containing ``project.yaml``. The examples below come from the
+checked-in :doc:`grant_coding` example (``examples/grant_coding``), a fully
+worked project you can copy as a starting point; ``kllm-batch init my-project``
+itself scaffolds a bare single-task template instead (see
+:ref:`basic-workflow`). Edit either one for your own research, then run
 ``kllm-batch validate -c my-project/project.yaml`` before preparing a run.
 You can edit the file directly or use the local :ref:`project builder
 <optional-gui>`.

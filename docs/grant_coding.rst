@@ -6,9 +6,10 @@ Grant-coding walkthrough
 This walkthrough classifies ten entirely synthetic grant abstracts into four
 topics. It demonstrates the complete pilot workflow without requiring you to
 design a project first. The example contains no real research data and is safe
-to inspect or modify. ``kllm-batch init my-project`` creates a new project
-with the same ten grants and core project files, so you can practice this
-walkthrough before adapting your own project.
+to inspect or modify. Copy the checked-in ``examples/grant_coding`` directory
+to practice this walkthrough before adapting your own project; ``kllm-batch
+init my-project`` scaffolds a bare single-task template instead (see
+:ref:`basic-workflow`).
 
 The commands below assume you are in the root of the repository checkout
 created during :doc:`installation`. If needed, clone and install it first:

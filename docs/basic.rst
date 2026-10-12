@@ -9,9 +9,9 @@ a small synchronous pilot, and only then prepare a complete batch.
 1. Create a project
 -------------------
 
-``init`` creates a working grant-coding project with the same ten synthetic
-grants, four-topic codebook, prompts, schema, and settings as the checked-in
-:doc:`grant_coding` example. The destination must be empty.
+``init`` creates a bare single-task project: a two-row placeholder dataset, a
+minimal schema, and placeholder prompts, ready for you to replace with your
+own task. The destination must be empty.
 
 .. code-block:: console
 
@@ -23,38 +23,37 @@ The important files are:
 
    my-project/
    ├── data/input-data.csv
-   ├── context/codebook.csv
+   ├── context/
    ├── prompts/system.txt
    ├── prompts/user.txt
    ├── project.yaml
    ├── schema.json
    └── runs/
 
-* ``data/input-data.csv`` — ten rows with a stable ``grant_id``, title,
-  abstract, year, investigator, source file, and an illustrative reference
-  label.
-* ``project.yaml`` — sends title and abstract to the model, keeps year,
-  investigator, and source file local, and uses the reference label only for
-  local evaluation.
-* ``context/codebook.csv`` — defines the ``financial``, ``organizational``,
-  ``technical``, and ``other`` labels, inserted into the prompt as
-  ``${codebook_json}`` alongside the records in ``${records_json}``.
-* ``schema.json`` — requires ``primary_label`` (one of the four codebook
-  values), an optional ``secondary_label`` (one of them, or ``null``), a
-  confidence score, and a justification. The package adds ``record_id`` and
-  the outer ``results`` array.
+* ``data/input-data.csv`` — two placeholder rows with a stable ``id`` and a
+  ``text`` column; replace with your own records.
+* ``project.yaml`` — sends ``text`` to the model under the logical name
+  ``text``; add more columns to ``fields_sent``/``columns_preserved`` as your
+  task needs them.
+* ``prompts/system.txt`` / ``prompts/user.txt`` — placeholders telling you to
+  define your own label values and decision rules; the user prompt must keep
+  the ``${records_json}`` placeholder.
+* ``schema.json`` — a minimal two-field contract (``label``, ``rationale``)
+  to replace with your task's actual output fields. The package adds
+  ``record_id`` and the outer ``results`` array.
+* ``context/`` — empty by default; add a context file (e.g. a codebook) here
+  and reference it under ``prompt.context`` if your task needs one.
 
-You can validate and prepare a pilot with these synthetic files as-is. For
-your own research:
+For your own research:
 
-* replace the input rows and codebook;
-* update ``project.yaml``, both prompts, and ``schema.json`` together, keeping
-  both schema label fields aligned with the codebook; and
-* replace the illustrative reference labels with your own reviewed labels, or
-  remove the gold-column mapping.
+* replace the input rows, prompts, and schema together;
+* add ``evaluation.gold_columns`` if you have reviewed reference labels to
+  compare against locally.
 
 See :doc:`project_settings` for a field-by-field guide to the YAML file, and
-:doc:`grant_coding` for this same project carried through to results.
+:doc:`grant_coding` for a complete worked example with a codebook, multiple
+labels, and local evaluation — copy ``examples/grant_coding`` to try it
+yourself.
 
 .. _optional-gui:
 
@@ -104,7 +103,7 @@ Select a deterministic sample and prepare it for synchronous execution:
 .. code-block:: console
 
    $ kllm-batch prepare -c my-project/project.yaml --provider openai \
-       --sample-size 4 --seed 42
+       --sample-size 2 --seed 42
 
 ``prepare`` is local and free. It prints a run directory; use that complete
 path as ``RUN_DIR`` below. Start with ``RUN_DIR/REVIEW.md``, then inspect:

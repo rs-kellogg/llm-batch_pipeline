@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "classification": {
+      "type": "string",
+      "enum": [
+        "managerial",
+        "non-managerial"
+      ]
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "needs_review": {
+      "type": "boolean"
+    },
+    "rationale": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "classification",
+    "confidence",
+    "needs_review",
+    "rationale"
+  ],
+  "additionalProperties": false
+}

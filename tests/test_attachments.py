@@ -30,6 +30,7 @@ def _project(tmp_path: Path) -> tuple[Path, Path]:
     config_path = root / "project.yaml"
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     config["task"]["rows_per_request"] = 1
+    config["providers"]["anthropic"] = {"model": "claude-haiku-4-5"}
     config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     data_path = root / "data" / "input-data.csv"
     frame = pd.read_csv(data_path, dtype=str).iloc[:2].copy()
@@ -59,7 +60,7 @@ def test_attached_requests_preserve_original_and_submit_attached(tmp_path, provi
     assert (run / "api_requests" / "segment_0000.jsonl").read_bytes() == original
     assert after["cost_estimate"] == before["cost_estimate"]
     assert after["file_attachments"]["cost_estimate_scope"] == "text_only_excludes_files"
-    assert {item["record_id"] for item in after["file_attachments"]["files"]} == {"GRANT-001", "GRANT-002"}
+    assert {item["record_id"] for item in after["file_attachments"]["files"]} == {"EX-001", "EX-002"}
     attached_path = run / after["file_attachments"]["request_files"]["0"]
     assert after["prepared_artifact_sha256"][str(attached_path.relative_to(run))] == sha256_file(attached_path)
     payloads = ProviderAdapter.read_jsonl(attached_path)
@@ -124,7 +125,7 @@ def test_text_only_retry_needs_no_attachment_step(tmp_path):
     run = prepare_run(config, "openai", execution="batch")
     outputs = run / "outputs"
     outputs.mkdir()
-    (outputs / "failures.jsonl").write_text(json.dumps({"record_id": "GRANT-001", "category": "errored"}) + "\n", encoding="utf-8")
+    (outputs / "failures.jsonl").write_text(json.dumps({"record_id": "EX-001", "category": "errored"}) + "\n", encoding="utf-8")
     child = prepare_retry(run)
     assert "file_attachments" not in _manifest(child)
     fake = FakeAdapter()
@@ -260,7 +261,7 @@ def test_attached_retry_requires_reattachment(tmp_path):
     attach_files_to_run(run, column="attachment_file", files_dir=files_dir, acknowledge_unestimated_cost=True)
     outputs = run / "outputs"
     outputs.mkdir()
-    (outputs / "failures.jsonl").write_text(json.dumps({"record_id": "GRANT-001", "category": "errored"}) + "\n", encoding="utf-8")
+    (outputs / "failures.jsonl").write_text(json.dumps({"record_id": "EX-001", "category": "errored"}) + "\n", encoding="utf-8")
     child = prepare_retry(run)
     assert _manifest(child)["file_attachments"]["status"] == "required"
     fake = FakeAdapter()
@@ -279,7 +280,7 @@ def test_retry_rejects_file_changed_since_parent(tmp_path):
     attach_files_to_run(run, column="attachment_file", files_dir=files_dir, acknowledge_unestimated_cost=True)
     outputs = run / "outputs"
     outputs.mkdir()
-    (outputs / "failures.jsonl").write_text(json.dumps({"record_id": "GRANT-001", "category": "errored"}) + "\n", encoding="utf-8")
+    (outputs / "failures.jsonl").write_text(json.dumps({"record_id": "EX-001", "category": "errored"}) + "\n", encoding="utf-8")
     child = prepare_retry(run)
     (files_dir / "first.png").write_bytes(PNG_BYTES + b"changed")
     with pytest.raises(ValueError, match="changed since the parent run"):
