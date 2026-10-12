@@ -19,7 +19,7 @@ from jsonschema import Draft202012Validator
 from ._version import __version__
 from .attachments import request_file_for_segment
 from .config import ProjectConfig, load_config
-from .data import canonicalize, load_source, normalize_id
+from .data import canonicalize, load_source, normalize_id, write_table
 from .models import CanonicalRequest, NormalizedResult
 from .pricing import estimate_cost, token_prices
 from .prompts import load_context, load_prompt_files, render_user_prompt
@@ -27,7 +27,7 @@ from .providers.base import ProviderAdapter, get_provider
 from .schema import load_row_schema, wrapped_schema
 from .state import load_state, resolve_run, save_state
 from .utils import RunLock, atomic_write_json, json_default, sha256_file, sha256_text, utc_now
-from .validation import validate_project
+from .validation import rows_to_drop_for_dedupe, validate_project
 
 
 RETRYABLE_FAILURE_CATEGORIES = frozenset(
@@ -146,6 +146,33 @@ def _select_ids(
     return None, {"method": "all"}, purpose
 
 
+def _deduplicate_input(config: ProjectConfig) -> tuple[ProjectConfig, dict[str, Any] | None]:
+    """If the source has duplicate record IDs or duplicate sent-field content,
+    write a sibling file with the first occurrence of each group kept and the
+    rest dropped, and return a config pointing at it. Returns the original
+    config and None if there is nothing to drop."""
+    df, source, fmt = load_source(config)
+    records = canonicalize(config, df, source)
+    drop_rows = rows_to_drop_for_dedupe(records)
+    if not drop_rows:
+        return config, None
+    drop_set = set(drop_rows)
+    keep_rows = [index for index in range(len(df)) if index not in drop_set]
+    cleaned = df.iloc[keep_rows].reset_index(drop=True)
+    destination = source.with_name(f"{source.stem}.deduplicated{source.suffix}")
+    write_table(cleaned, destination, fmt, config.input.csv_encoding)
+    new_input = config.input.model_copy(update={"path": destination})
+    new_config = config.model_copy(update={"input": new_input})
+    summary = {
+        "original_path": str(source),
+        "deduplicated_path": str(destination),
+        "original_rows": len(df),
+        "rows_dropped": len(drop_rows),
+        "remaining_rows": len(cleaned),
+    }
+    return new_config, summary
+
+
 def find_incomplete_runs(config_or_path: ProjectConfig | str | Path) -> list[Path]:
     """Return leftover `.<run_id>.building` directories from a prior `prepare`
     that failed or was interrupted before completion. Each one is safe to
@@ -168,10 +195,14 @@ def prepare_run(
     execution: str | None = None,
     selected_ids: set[str] | None = None,
     parent_run: str | None = None,
+    dedupe: bool = False,
 ) -> Path:
     config = config_or_path if isinstance(config_or_path, ProjectConfig) else load_config(config_or_path)
     if provider not in config.providers:
         raise ValueError(f"Provider '{provider}' is not configured")
+    dedupe_summary = None
+    if dedupe:
+        config, dedupe_summary = _deduplicate_input(config)
     validation = validate_project(config)
     selected_ids, selection, purpose = _select_ids(
         config,
@@ -304,6 +335,7 @@ def prepare_run(
             "purpose": purpose,
             "execution": execution,
             "selection": selection,
+            "dedupe": dedupe_summary,
             "gold_columns": config.evaluation.gold_columns,
             "gold_labels_file": str(gold_labels_path.relative_to(run_dir)) if gold_labels_path else None,
             "parent_run": parent_run,

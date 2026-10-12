@@ -259,9 +259,12 @@ Input mappings
 ~~~~~~~~~~~~~~
 
 Duplicate normalized IDs and exact duplicate content across all
-``fields_sent`` values are blocking validation errors. Correct the input
-upstream or send a genuinely distinguishing field; validation never chooses a
-row to keep.
+``fields_sent`` values are blocking validation errors. By default, validation
+never chooses a row to keep: correct the input upstream, or pass
+``kllm-batch prepare --dedupe`` to opt into an automatic fix, which keeps the
+first occurrence of each duplicate group, writes the result to a sibling
+``<name>.deduplicated<ext>`` file next to the configured input, and prepares
+the run from that file instead of failing.
 
 Prompts and context
 ~~~~~~~~~~~~~~~~~~~

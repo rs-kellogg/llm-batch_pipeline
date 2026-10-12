@@ -2,6 +2,7 @@ from typer.testing import CliRunner
 import json
 from pathlib import Path
 from types import SimpleNamespace
+import pandas as pd
 import pytest
 import yaml
 
@@ -140,6 +141,79 @@ def test_documented_cli_workflow_with_mock_provider(example_config, tmp_path, mo
     assert runner.invoke(app, ["audit", str(run)]).exit_code == 0
     assert runner.invoke(app, ["merge", str(run)]).exit_code == 0
     assert runner.invoke(app, ["compare", str(run), str(run)]).exit_code == 0
+
+
+@pytest.mark.parametrize(
+    ("filename", "code"),
+    [("invalid_duplicate_ids.csv", "duplicate_record_id"), ("invalid_duplicate_content.csv", "duplicate_content")],
+)
+def test_prepare_dedupe_flag_writes_cleaned_copy_and_succeeds(example_config, tmp_path, monkeypatch, filename, code):
+    raw = yaml.safe_load(example_config.read_text())
+    raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
+    raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
+    raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
+    raw["prompt"]["context"]["codebook"]["path"] = str(example_config.parent / "context" / "codebook.csv")
+    raw["evaluation"]["gold_columns"] = {}
+    source = tmp_path / filename
+    source.write_bytes((example_config.parent / "data" / filename).read_bytes())
+    raw["input"]["path"] = str(source)
+    raw["output"]["runs_directory"] = str(tmp_path / "runs")
+    config = tmp_path / "project.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
+
+    without_flag = runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai"])
+    assert without_flag.exit_code == 1
+    assert code in without_flag.stdout
+
+    deduplicated = source.with_name(f"{source.stem}.deduplicated{source.suffix}")
+    assert not deduplicated.exists()
+
+    result = runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai", "--dedupe"])
+    assert result.exit_code == 0
+    assert "Deduplicated input" in result.stdout
+    assert "dropped 1 duplicate row(s) out of 2" in " ".join(result.stdout.split())
+
+    assert deduplicated.is_file()
+    cleaned = pd.read_csv(deduplicated)
+    assert len(cleaned) == 1
+
+    run_dir = next((tmp_path / "runs").iterdir())
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert manifest["dedupe"] == {
+        "original_path": str(source),
+        "deduplicated_path": str(deduplicated),
+        "original_rows": 2,
+        "rows_dropped": 1,
+        "remaining_rows": 1,
+    }
+    assert manifest["source_path"] == str(deduplicated)
+    assert manifest["selected_rows"] == 1
+
+
+def test_prepare_dedupe_flag_is_a_noop_without_duplicates(example_config, tmp_path, monkeypatch):
+    raw = yaml.safe_load(example_config.read_text())
+    source = tmp_path / "input-data.csv"
+    source.write_bytes((example_config.parent / "data" / "input-data.csv").read_bytes())
+    raw["input"]["path"] = str(source)
+    raw["task"]["output_schema"] = str(example_config.parent / "schema.json")
+    raw["prompt"]["system_file"] = str(example_config.parent / "prompts" / "system.txt")
+    raw["prompt"]["user_file"] = str(example_config.parent / "prompts" / "user.txt")
+    raw["prompt"]["context"]["codebook"]["path"] = str(example_config.parent / "context" / "codebook.csv")
+    raw["output"]["runs_directory"] = str(tmp_path / "runs")
+    config = tmp_path / "project.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
+
+    result = runner.invoke(app, ["prepare", "-c", str(config), "--provider", "openai", "--dedupe"])
+    assert result.exit_code == 0
+    assert "Deduplicated input" not in result.stdout
+    run_dir = next((tmp_path / "runs").iterdir())
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert manifest["dedupe"] is None
+    assert not source.with_name("input-data.deduplicated.csv").exists()
 
 
 def test_prepare_command_rejects_openai_compatible_batch_execution(example_config, tmp_path, monkeypatch):

@@ -51,6 +51,26 @@ def _format_rows(rows: list[int], limit: int = 20) -> str:
     return f"[{shown}{suffix}]"
 
 
+def rows_to_drop_for_dedupe(records: Iterable[CanonicalRecord]) -> list[int]:
+    """Source rows to drop, keeping the first occurrence of each group of
+    duplicate record IDs or duplicate sent-field content."""
+    seen_ids: set[str] = set()
+    seen_content: set[str] = set()
+    drop: list[int] = []
+    for record in records:
+        content_key = record_content_key(record)
+        duplicate = content_key in seen_content
+        seen_content.add(content_key)
+        if record.record_id:
+            if record.record_id in seen_ids:
+                duplicate = True
+            else:
+                seen_ids.add(record.record_id)
+        if duplicate:
+            drop.append(record.source_row)
+    return drop
+
+
 def validate_project(config_or_path: ProjectConfig | str | Path, report_path: str | Path | None = None) -> dict:
     """Validate a project and optionally persist diagnostics for every failure."""
     try:
