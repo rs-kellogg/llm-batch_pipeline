@@ -341,6 +341,7 @@ def prepare_run(
             "parent_run": parent_run,
             "cost_estimate": estimate.model_dump(),
             "output_options": config.output.model_dump(mode="json"),
+            "input_columns": sorted(set(config.input.fields_sent) | set(config.input.columns_preserved)),
             "context": context_manifest,
             "prepared_artifact_sha256": prepared_artifacts,
         }
@@ -1097,7 +1098,7 @@ def _process_downloads(run_dir: Path, adapter: ProviderAdapter) -> None:
             row_provenance = _row_provenance(manifest, source, custom_id, batch_by_custom_id.get(custom_id), request_usage.get("model_returned"), int(request_usage.get("input_tokens", 0)), int(request_usage.get("output_tokens", 0)), "invalid")
             enriched_failures.append({**failure, **row_provenance})
         output_options = manifest["output_options"]
-        _write_result_outputs(run_dir, results, output_options)
+        _write_result_outputs(run_dir, results, output_options, manifest.get("input_columns", []))
         _write_failures(run_dir, enriched_failures)
         atomic_write_json(run_dir / "run_reports" / "usage.json", {"requests": list(usage_by_request.values()), "input_tokens": sum(item["input_tokens"] for item in usage_by_request.values()), "output_tokens": sum(item["output_tokens"] for item in usage_by_request.values())})
         unfinished = any(segment["status"] in {"prepared", "submitted", "running", "completed", "downloaded"} for segment in state["segments"])
@@ -1163,9 +1164,11 @@ def _row_provenance(
     }
 
 
-def _write_result_outputs(run_dir: Path, rows: list[dict[str, Any]], output_options: dict[str, Any]) -> None:
+def _write_result_outputs(run_dir: Path, rows: list[dict[str, Any]], output_options: dict[str, Any], input_columns: list[str]) -> None:
     (run_dir / "outputs").mkdir(exist_ok=True)
     frame = pd.DataFrame(rows, columns=None if rows else ["record_id", "source_row"])
+    if not output_options.get("include_input_columns", True):
+        frame = frame.drop(columns=[c for c in input_columns if c in frame.columns])
     if output_options["write_parquet"]:
         frame.to_parquet(run_dir / "outputs" / "results.parquet", index=False)
     if output_options["write_csv"]:

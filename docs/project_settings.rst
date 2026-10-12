@@ -241,6 +241,7 @@ Evaluation and output
    output:
      write_parquet: true
      write_csv: true
+     include_input_columns: true
      runs_directory: runs
 
 * ``random_seed`` — used for deterministic input-row sampling when ``prepare
@@ -258,6 +259,13 @@ Evaluation and output
   see :doc:`basic`.)
 * ``write_parquet`` / ``write_csv`` — whether to write results in each
   format; the starter writes both.
+* ``include_input_columns`` — whether ``results.csv``/``results.parquet``
+  (and ``merged.csv``/``merged.parquet`` from ``kllm-batch merge``) include the
+  configured ``fields_sent``/``columns_preserved`` input columns alongside the
+  model output. Defaults to ``true``. Set to ``false`` to drop those input
+  columns and keep the files smaller; ``record_id`` and all provenance/output
+  columns are always kept, so results can still be joined back to the
+  original input file on ``record_id``.
 * ``runs_directory`` — where each prepared run gets its own subdirectory
   (``runs`` in the starter), separate from the original input data.
 

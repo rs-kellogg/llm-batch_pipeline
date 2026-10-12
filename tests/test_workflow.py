@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 import kellogg_llm_batch.core as core
-from kellogg_llm_batch.core import audit_run, batch_submission_summary, cancel_run, compare_runs, extrapolate_cost_from_run, prepare_retry, prepare_run, status_run, submit_run, sync_run
+from kellogg_llm_batch.core import audit_run, batch_submission_summary, cancel_run, compare_runs, extrapolate_cost_from_run, merge_run, prepare_retry, prepare_run, status_run, submit_run, sync_run
 from kellogg_llm_batch.providers.base import ProviderAdapter
 from kellogg_llm_batch.state import load_state, save_state
 
@@ -119,6 +119,57 @@ def test_prepare_submit_sync_and_audit(example_config, tmp_path, monkeypatch):
         "accuracy": pytest.approx(0.1),
     }
     assert load_state(run)["stage"] == "audited"
+
+
+def test_include_input_columns_false_drops_input_columns_from_outputs(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
+    config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["output"]["include_input_columns"] = False
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    run = prepare_run(config, "openai")
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    assert set(manifest["input_columns"]) == {"project_title", "abstract", "year", "investigator", "source_file"}
+
+    submit_run(run, fake)
+    sync_run(run, adapter=fake)
+
+    for path in (run / "outputs" / "results.parquet", run / "outputs" / "results.csv"):
+        frame = pd.read_parquet(path) if path.suffix == ".parquet" else pd.read_csv(path)
+        for column in ("project_title", "abstract", "year", "investigator", "source_file"):
+            assert column not in frame.columns
+        assert "record_id" in frame.columns
+        assert "run_id" in frame.columns
+        assert frame["record_id"].is_unique
+
+
+def test_include_input_columns_false_stays_trimmed_through_merge(example_config, tmp_path, monkeypatch):
+    fake = FakeAdapter()
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
+    config = _temporary_config(example_config, tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["output"]["include_input_columns"] = False
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    parent = prepare_run(config, "openai")
+    submit_run(parent, fake)
+    sync_run(parent, adapter=fake)
+
+    child = prepare_run(config, "openai", parent_run=str(parent))
+    submit_run(child, fake)
+    sync_run(child, adapter=fake)
+
+    merged_path = merge_run(child)
+    dropped_columns = ("project_title", "abstract", "year", "investigator", "source_file")
+    merged = pd.read_parquet(merged_path)
+    for column in dropped_columns:
+        assert column not in merged.columns
+    merged_csv = pd.read_csv(child / "outputs" / "merged.csv")
+    for column in dropped_columns:
+        assert column not in merged_csv.columns
+    assert merged_csv["record_id"].is_unique
 
 
 def test_estimate_cost_extrapolates_from_actual_usage(example_config, tmp_path, monkeypatch):
