@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import getpass
 import json
 from pathlib import Path
 from typing import Any
@@ -33,4 +34,19 @@ def resolve_run(run: str | Path) -> Path:
     if local.exists():
         return local.resolve()
     raise FileNotFoundError(f"Run not found: {run}. Pass the run directory printed by 'prepare'.")
+
+
+def add_note(run_dir: Path, message: str, author: str | None = None) -> dict[str, Any]:
+    entry = {"timestamp": utc_now(), "author": author or getpass.getuser(), "message": message}
+    with (run_dir / "notes.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    return entry
+
+
+def load_notes(run_dir: Path) -> list[dict[str, Any]]:
+    path = run_dir / "notes.jsonl"
+    if not path.exists():
+        return []
+    with path.open(encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
 

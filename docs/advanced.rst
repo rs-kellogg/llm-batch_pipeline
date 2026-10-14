@@ -308,6 +308,28 @@ the run manifest. See :doc:`project_settings` for supported common controls,
 reserved request keys, model-compatibility cautions, and the distinction
 between model generation settings and the pilot row-selection seed.
 
+Override prices per project in ``project.yaml`` with
+``input_price_per_million`` / ``output_price_per_million`` (batch execution)
+and ``sync_input_price_per_million`` / ``sync_output_price_per_million``
+(sync execution), in dollars per million tokens. Input and output prices
+must be set together:
+
+.. code-block:: yaml
+
+   providers:
+     anthropic:
+       model: claude-haiku-4-5
+       input_price_per_million: 0.5
+       output_price_per_million: 2.5
+       sync_input_price_per_million: 1.0
+       sync_output_price_per_million: 5.0
+
+When no override is set, ``prepare`` falls back to the built-in prices in
+the ``PRICES`` table in ``src/kellogg_llm_batch/pricing.py``. Update that
+table (and its ``PRICING_AS_OF`` date) when a provider changes list prices
+or a new model needs a built-in default, so every project using that model
+gets a correct estimate without configuring a per-project override.
+
 Stage batch segments
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -368,6 +390,16 @@ The manifest records source, prompt, schema, model, package, Python, Git,
 selection, execution, hash, and cost information. Essential row provenance is
 included in result and failure rows. Raw responses, earlier attempts, and
 source inputs are never patched by processing commands.
+
+``manifest.json`` and ``state.json`` are program-written and should not be
+hand-edited. For your own commentary — why a run was made, what changed since
+the last one — append to ``notes.jsonl`` with
+``kllm-batch note RUN_DIR "message"``, or open the file directly; it is a
+plain JSON Lines list of ``{"timestamp", "author", "message"}`` entries that
+``status`` reports a count for when present. To review many runs at once —
+for example, returning to a project after a few weeks — run
+``kllm-batch notes RUNS_DIR`` to print every run's path alongside its notes;
+add ``--all`` to also list runs that have none.
 
 Protect research data
 ---------------------

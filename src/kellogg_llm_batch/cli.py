@@ -16,7 +16,7 @@ from rich.table import Table
 from .attachments import attach_files_to_run
 from .core import audit_run, batch_submission_summary, cancel_run, compare_runs, extrapolate_cost_from_run, find_incomplete_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, summarize_cancellation, sync_checkpoint_progress, sync_run
 from .scaffold import scaffold_project
-from .state import load_state, resolve_run
+from .state import add_note, load_notes, load_state, resolve_run
 from .validation import ProjectValidationError, validate_project
 
 
@@ -469,6 +469,65 @@ def status_command(run: Path = typer.Argument(..., help="Run directory.")):
     try:
         state = status_run(run)
         _print_state(state)
+        try:
+            notes = load_notes(resolve_run(run))
+        except FileNotFoundError:
+            notes = []
+        if notes:
+            console.print(f"[dim]{len(notes)} note(s) — see notes.jsonl, or `kllm-batch note RUN_DIR \"...\"` to add one.[/dim]")
+    except Exception as exc:
+        _fail(exc)
+
+
+@app.command("note")
+def note_command(
+    run: Path = typer.Argument(..., help="Run directory."),
+    message: str = typer.Argument(..., help="Note text to append."),
+):
+    """Append a timestamped note to a run, for example why it was run or what changed.
+
+    Example: `kllm-batch note RUN_DIR "re-ran after fixing a schema typo"`. Local
+    and free. Notes are append-only, stored in notes.jsonl inside the run
+    directory; you can also open that file and edit or add entries by hand.
+    """
+    try:
+        run_dir = resolve_run(run)
+        add_note(run_dir, message)
+        console.print(f"Added note to [bold]{run_dir.name}[/bold].")
+    except Exception as exc:
+        _fail(exc)
+
+
+@app.command("notes")
+def notes_command(
+    runs_dir: Path = typer.Argument(Path("runs"), help="Directory containing run folders."),
+    show_empty: bool = typer.Option(False, "--all", help="Also list runs that have no notes."),
+):
+    """Print every run's notes under a runs directory, to review many runs at once.
+
+    Example: `kllm-batch notes my-project/runs`. Local and free; scans
+    immediate subdirectories for notes.jsonl. Defaults to ./runs.
+    """
+    try:
+        if not runs_dir.exists():
+            raise FileNotFoundError(f"Runs directory not found: {runs_dir}")
+        run_dirs = sorted(path for path in runs_dir.iterdir() if path.is_dir() and not path.name.startswith("."))
+        printed_any = False
+        for run_dir in run_dirs:
+            notes = load_notes(run_dir)
+            if not notes and not show_empty:
+                continue
+            printed_any = True
+            console.print(f"[bold]{run_dir}[/bold]", soft_wrap=True)
+            if not notes:
+                console.print("  [dim](no notes)[/dim]")
+            for entry in notes:
+                console.print(
+                    f"  [dim]{entry['timestamp']}[/dim] [cyan]{entry.get('author', '')}[/cyan]  {entry['message']}",
+                    soft_wrap=True,
+                )
+        if not printed_any:
+            console.print(f"[dim]No notes found under {runs_dir}. Use --all to list every run anyway.[/dim]")
     except Exception as exc:
         _fail(exc)
 
