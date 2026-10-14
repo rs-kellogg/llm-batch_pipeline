@@ -308,6 +308,28 @@ the run manifest. See :doc:`project_settings` for supported common controls,
 reserved request keys, model-compatibility cautions, and the distinction
 between model generation settings and the pilot row-selection seed.
 
+Override prices per project in ``project.yaml`` with
+``input_price_per_million`` / ``output_price_per_million`` (batch execution)
+and ``sync_input_price_per_million`` / ``sync_output_price_per_million``
+(sync execution), in dollars per million tokens. Input and output prices
+must be set together:
+
+.. code-block:: yaml
+
+   providers:
+     anthropic:
+       model: claude-haiku-4-5
+       input_price_per_million: 0.5
+       output_price_per_million: 2.5
+       sync_input_price_per_million: 1.0
+       sync_output_price_per_million: 5.0
+
+When no override is set, ``prepare`` falls back to the built-in prices in
+the ``PRICES`` table in ``src/kellogg_llm_batch/pricing.py``. Update that
+table (and its ``PRICING_AS_OF`` date) when a provider changes list prices
+or a new model needs a built-in default, so every project using that model
+gets a correct estimate without configuring a per-project override.
+
 Stage batch segments
 ~~~~~~~~~~~~~~~~~~~~
 
