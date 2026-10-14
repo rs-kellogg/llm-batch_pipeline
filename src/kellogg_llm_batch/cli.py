@@ -498,6 +498,40 @@ def note_command(
         _fail(exc)
 
 
+@app.command("notes")
+def notes_command(
+    runs_dir: Path = typer.Argument(Path("runs"), help="Directory containing run folders."),
+    show_empty: bool = typer.Option(False, "--all", help="Also list runs that have no notes."),
+):
+    """Print every run's notes under a runs directory, to review many runs at once.
+
+    Example: `kllm-batch notes my-project/runs`. Local and free; scans
+    immediate subdirectories for notes.jsonl. Defaults to ./runs.
+    """
+    try:
+        if not runs_dir.exists():
+            raise FileNotFoundError(f"Runs directory not found: {runs_dir}")
+        run_dirs = sorted(path for path in runs_dir.iterdir() if path.is_dir() and not path.name.startswith("."))
+        printed_any = False
+        for run_dir in run_dirs:
+            notes = load_notes(run_dir)
+            if not notes and not show_empty:
+                continue
+            printed_any = True
+            console.print(f"[bold]{run_dir}[/bold]", soft_wrap=True)
+            if not notes:
+                console.print("  [dim](no notes)[/dim]")
+            for entry in notes:
+                console.print(
+                    f"  [dim]{entry['timestamp']}[/dim] [cyan]{entry.get('author', '')}[/cyan]  {entry['message']}",
+                    soft_wrap=True,
+                )
+        if not printed_any:
+            console.print(f"[dim]No notes found under {runs_dir}. Use --all to list every run anyway.[/dim]")
+    except Exception as exc:
+        _fail(exc)
+
+
 def _print_state(state: dict) -> None:
     table = Table(title=f"Run {state['run_id']} — {state['status']}")
     table.add_column("Segment")

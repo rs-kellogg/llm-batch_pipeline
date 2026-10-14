@@ -396,7 +396,10 @@ hand-edited. For your own commentary — why a run was made, what changed since
 the last one — append to ``notes.jsonl`` with
 ``kllm-batch note RUN_DIR "message"``, or open the file directly; it is a
 plain JSON Lines list of ``{"timestamp", "author", "message"}`` entries that
-``status`` reports a count for when present.
+``status`` reports a count for when present. To review many runs at once —
+for example, returning to a project after a few weeks — run
+``kllm-batch notes RUNS_DIR`` to print every run's path alongside its notes;
+add ``--all`` to also list runs that have none.
 
 Protect research data
 ---------------------

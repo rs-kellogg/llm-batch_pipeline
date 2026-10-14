@@ -450,6 +450,40 @@ def test_status_command_surfaces_note_count(tmp_path, monkeypatch):
     assert "1 note(s)" in result.stdout
 
 
+def test_notes_command_lists_notes_across_run_folders(tmp_path):
+    runs_dir = tmp_path / "runs"
+    run_a = runs_dir / "run_a"
+    run_b = runs_dir / "run_b"
+    run_a.mkdir(parents=True)
+    run_b.mkdir(parents=True)
+    runner.invoke(app, ["note", str(run_a), "first run note"])
+
+    result = runner.invoke(app, ["notes", str(runs_dir)])
+
+    assert result.exit_code == 0
+    assert str(run_a) in result.stdout
+    assert "first run note" in result.stdout
+    assert str(run_b) not in result.stdout
+
+
+def test_notes_command_all_flag_lists_runs_without_notes(tmp_path):
+    runs_dir = tmp_path / "runs"
+    run_b = runs_dir / "run_b"
+    run_b.mkdir(parents=True)
+
+    result = runner.invoke(app, ["notes", str(runs_dir), "--all"])
+
+    assert result.exit_code == 0
+    assert str(run_b) in result.stdout
+    assert "no notes" in result.stdout
+
+
+def test_notes_command_missing_directory_fails(tmp_path):
+    result = runner.invoke(app, ["notes", str(tmp_path / "missing")])
+
+    assert result.exit_code == 1
+
+
 def test_submit_command_targets_segment_range(
     example_config, tmp_path, monkeypatch
 ):
