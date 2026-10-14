@@ -19,7 +19,7 @@ from jsonschema import Draft202012Validator
 from ._version import __version__
 from .attachments import request_file_for_segment
 from .config import ProjectConfig, load_config
-from .data import canonicalize, load_source, normalize_id
+from .data import canonicalize, load_source, normalize_id, write_table
 from .models import CanonicalRequest, NormalizedResult
 from .pricing import estimate_cost, token_prices
 from .prompts import load_context, load_prompt_files, render_user_prompt
@@ -27,7 +27,7 @@ from .providers.base import ProviderAdapter, get_provider
 from .schema import load_row_schema, wrapped_schema
 from .state import load_state, resolve_run, save_state
 from .utils import RunLock, atomic_write_json, json_default, sha256_file, sha256_text, utc_now
-from .validation import validate_project
+from .validation import rows_to_drop_for_dedupe, validate_project
 
 
 RETRYABLE_FAILURE_CATEGORIES = frozenset(
@@ -72,7 +72,7 @@ def _build_requests(config: ProjectConfig, provider_name: str, selected_ids: set
     context = load_context(config)
     schema = wrapped_schema(load_row_schema(config))
     settings = config.providers[provider_name]
-    adapter = get_provider(provider_name)
+    adapter = get_provider(provider_name, base_url=settings.base_url, api_key=settings.resolve_api_key())
     canonical: list[CanonicalRequest] = []
     payloads: list[dict[str, Any]] = []
     for index, start in enumerate(range(0, len(records), config.task.rows_per_request)):
@@ -146,6 +146,33 @@ def _select_ids(
     return None, {"method": "all"}, purpose
 
 
+def _deduplicate_input(config: ProjectConfig) -> tuple[ProjectConfig, dict[str, Any] | None]:
+    """If the source has duplicate record IDs or duplicate sent-field content,
+    write a sibling file with the first occurrence of each group kept and the
+    rest dropped, and return a config pointing at it. Returns the original
+    config and None if there is nothing to drop."""
+    df, source, fmt = load_source(config)
+    records = canonicalize(config, df, source)
+    drop_rows = rows_to_drop_for_dedupe(records)
+    if not drop_rows:
+        return config, None
+    drop_set = set(drop_rows)
+    keep_rows = [index for index in range(len(df)) if index not in drop_set]
+    cleaned = df.iloc[keep_rows].reset_index(drop=True)
+    destination = source.with_name(f"{source.stem}.deduplicated{source.suffix}")
+    write_table(cleaned, destination, fmt, config.input.csv_encoding)
+    new_input = config.input.model_copy(update={"path": destination})
+    new_config = config.model_copy(update={"input": new_input})
+    summary = {
+        "original_path": str(source),
+        "deduplicated_path": str(destination),
+        "original_rows": len(df),
+        "rows_dropped": len(drop_rows),
+        "remaining_rows": len(cleaned),
+    }
+    return new_config, summary
+
+
 def find_incomplete_runs(config_or_path: ProjectConfig | str | Path) -> list[Path]:
     """Return leftover `.<run_id>.building` directories from a prior `prepare`
     that failed or was interrupted before completion. Each one is safe to
@@ -168,10 +195,14 @@ def prepare_run(
     execution: str | None = None,
     selected_ids: set[str] | None = None,
     parent_run: str | None = None,
+    dedupe: bool = False,
 ) -> Path:
     config = config_or_path if isinstance(config_or_path, ProjectConfig) else load_config(config_or_path)
     if provider not in config.providers:
         raise ValueError(f"Provider '{provider}' is not configured")
+    dedupe_summary = None
+    if dedupe:
+        config, dedupe_summary = _deduplicate_input(config)
     validation = validate_project(config)
     selected_ids, selection, purpose = _select_ids(
         config,
@@ -184,11 +215,17 @@ def prepare_run(
     execution = execution or ("sync" if purpose == "pilot" else "batch")
     if execution not in {"batch", "sync"}:
         raise ValueError("execution must be 'batch' or 'sync'")
+    if provider == "openai_compatible" and execution == "batch":
+        raise ValueError(
+            "Provider 'openai_compatible' only supports execution='sync'; it has no batch "
+            "submit/status/cancel/download implementation. Pass --execution sync (or a "
+            "--sample-size/--ids-file pilot, which defaults to sync) when preparing this provider."
+        )
     records, canonical, payloads, source, schema = _build_requests(config, provider, selected_ids)
     if not records:
         raise ValueError("No records selected for preparation")
-    adapter = get_provider(provider)
     settings = config.providers[provider]
+    adapter = get_provider(provider, base_url=settings.base_url, api_key=settings.resolve_api_key())
     max_requests = settings.max_requests_per_batch or adapter.default_max_requests
     max_bytes = settings.max_batch_bytes or adapter.default_max_bytes
     segments = _split_payloads(payloads, max_requests, max_bytes)
@@ -298,11 +335,13 @@ def prepare_run(
             "purpose": purpose,
             "execution": execution,
             "selection": selection,
+            "dedupe": dedupe_summary,
             "gold_columns": config.evaluation.gold_columns,
             "gold_labels_file": str(gold_labels_path.relative_to(run_dir)) if gold_labels_path else None,
             "parent_run": parent_run,
             "cost_estimate": estimate.model_dump(),
             "output_options": config.output.model_dump(mode="json"),
+            "input_columns": sorted(set(config.input.fields_sent) | set(config.input.columns_preserved)),
             "context": context_manifest,
             "prepared_artifact_sha256": prepared_artifacts,
         }
@@ -338,6 +377,9 @@ def _write_review(run_dir: Path, manifest: dict[str, Any], records: list[Any]) -
     if manifest["provider"] == "openai":
         prompt_locations = "`body.instructions` (system prompt) and `body.input` (user prompt)"
         inspection_command = "jq -r '.body.instructions, .body.input' api_requests/segment_*.jsonl"
+    elif manifest["provider"] == "openai_compatible":
+        prompt_locations = "`body.messages[0].content` (system prompt) and `body.messages[1].content` (user prompt)"
+        inspection_command = "jq -r '.body.messages[0].content, .body.messages[1].content' api_requests/segment_*.jsonl"
     else:
         prompt_locations = "`params.system` (system prompt) and `params.messages[].content` (user prompt)"
         inspection_command = "jq -r '.params.system, .params.messages[].content' api_requests/segment_*.jsonl"
@@ -769,6 +811,17 @@ def batch_submission_summary(
     }
 
 
+def _adapter_for_run(run_dir: Path, manifest: dict[str, Any]) -> ProviderAdapter:
+    provider_name = manifest["provider"]
+    snapshot_path = run_dir / "project_snapshot" / "project.yaml"
+    settings = None
+    if snapshot_path.exists():
+        settings = load_config(snapshot_path).providers.get(provider_name)
+    base_url = settings.base_url if settings else None
+    api_key = settings.resolve_api_key() if settings else None
+    return get_provider(provider_name, base_url=base_url, api_key=api_key)
+
+
 def submit_run(
     run: str | Path,
     adapter: ProviderAdapter | None = None,
@@ -778,7 +831,7 @@ def submit_run(
 ) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
-    adapter = adapter or get_provider(manifest["provider"])
+    adapter = adapter or _adapter_for_run(run_dir, manifest)
     _verify_prepared_artifacts(run_dir, manifest)
     if manifest.get("execution", "batch") == "sync":
         if segment_range is not None:
@@ -817,7 +870,7 @@ def submit_run(
 def status_run(run: str | Path, adapter: ProviderAdapter | None = None) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
-    adapter = adapter or get_provider(manifest["provider"])
+    adapter = adapter or _adapter_for_run(run_dir, manifest)
     with RunLock(run_dir):
         state = load_state(run_dir)
         for segment in state["segments"]:
@@ -854,7 +907,7 @@ def cancel_run(
             "Segment ranges are available only for batch runs; synchronous runs do not "
             "create remote segment jobs"
         )
-    adapter = adapter or get_provider(manifest["provider"])
+    adapter = adapter or _adapter_for_run(run_dir, manifest)
     with RunLock(run_dir):
         state = load_state(run_dir)
         selected = _select_segments(state, segment_range)
@@ -916,7 +969,7 @@ def sync_run(
 ) -> dict:
     run_dir = resolve_run(run)
     manifest = _manifest(run_dir)
-    adapter = adapter or get_provider(manifest["provider"])
+    adapter = adapter or _adapter_for_run(run_dir, manifest)
     (run_dir / "raw_responses").mkdir(exist_ok=True)
     while True:
         state = status_run(run_dir, adapter)
@@ -1045,7 +1098,7 @@ def _process_downloads(run_dir: Path, adapter: ProviderAdapter) -> None:
             row_provenance = _row_provenance(manifest, source, custom_id, batch_by_custom_id.get(custom_id), request_usage.get("model_returned"), int(request_usage.get("input_tokens", 0)), int(request_usage.get("output_tokens", 0)), "invalid")
             enriched_failures.append({**failure, **row_provenance})
         output_options = manifest["output_options"]
-        _write_result_outputs(run_dir, results, output_options)
+        _write_result_outputs(run_dir, results, output_options, manifest.get("input_columns", []))
         _write_failures(run_dir, enriched_failures)
         atomic_write_json(run_dir / "run_reports" / "usage.json", {"requests": list(usage_by_request.values()), "input_tokens": sum(item["input_tokens"] for item in usage_by_request.values()), "output_tokens": sum(item["output_tokens"] for item in usage_by_request.values())})
         unfinished = any(segment["status"] in {"prepared", "submitted", "running", "completed", "downloaded"} for segment in state["segments"])
@@ -1111,9 +1164,11 @@ def _row_provenance(
     }
 
 
-def _write_result_outputs(run_dir: Path, rows: list[dict[str, Any]], output_options: dict[str, Any]) -> None:
+def _write_result_outputs(run_dir: Path, rows: list[dict[str, Any]], output_options: dict[str, Any], input_columns: list[str]) -> None:
     (run_dir / "outputs").mkdir(exist_ok=True)
     frame = pd.DataFrame(rows, columns=None if rows else ["record_id", "source_row"])
+    if not output_options.get("include_input_columns", True):
+        frame = frame.drop(columns=[c for c in input_columns if c in frame.columns])
     if output_options["write_parquet"]:
         frame.to_parquet(run_dir / "outputs" / "results.parquet", index=False)
     if output_options["write_csv"]:

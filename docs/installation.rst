@@ -70,6 +70,16 @@ Credentials are not needed for ``init``, ``gui``, ``validate``, or
 ``prepare``. They are required when a command contacts the corresponding
 provider.
 
+For a self-hosted Ollama or vLLM server (the ``openai_compatible`` provider,
+see :doc:`project_settings`), most local deployments need no credential at
+all — only ``providers.openai_compatible.base_url`` in ``project.yaml``. If
+your server sits behind authentication, set ``api_key_env_var`` to the name
+of an environment variable and export it the same way:
+
+.. code-block:: console
+
+   $ export MY_LOCAL_SERVER_API_KEY="your-key"
+
 .. warning::
 
    Never put credentials in ``project.yaml``, prompt files, shared shell

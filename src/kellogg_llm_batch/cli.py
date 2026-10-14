@@ -162,6 +162,11 @@ def _print_validation(report: dict) -> None:
     console.print(f"Rows: {report['source_rows']:,} | Requests: {report['request_count']:,}")
     for finding in report["findings"]:
         console.print(f"  {finding['severity'].upper()} {finding['code']}: {finding['message']}")
+    if any(f["code"] in {"duplicate_content", "duplicate_record_id"} for f in report["findings"]):
+        console.print(
+            "[dim]Fix the listed source rows upstream (deduplicate or add a distinguishing "
+            "field) — kllm-batch never auto-selects which duplicate row to keep.[/dim]"
+        )
     for provider, estimate in report["cost_estimates"].items():
         value = "unknown" if estimate["estimated_usd"] is None else f"${estimate['estimated_usd']:.4f}"
         console.print(f"  {provider}: estimated maximum {value}")
@@ -176,16 +181,18 @@ def _print_validation(report: dict) -> None:
 @app.command("prepare")
 def prepare_command(
     config: Path = typer.Option(..., "--config", "-c", help="Path to project.yaml."),
-    provider: str = typer.Option(..., help="Configured provider: openai or anthropic."),
+    provider: str = typer.Option(..., help="Configured provider: openai, anthropic, or openai_compatible."),
     sample_size: Optional[int] = typer.Option(None, min=1, help="Prepare a deterministic random sample instead of all rows."),
     seed: Optional[int] = typer.Option(None, help="Random seed used with --sample-size; defaults to evaluation.random_seed in project.yaml."),
     ids_file: Optional[Path] = typer.Option(None, help="UTF-8 text file containing one source record ID per line, with no header."),
-    execution: Optional[str] = typer.Option(None, help="Execution mode: sync or batch. Defaults to sync for a selection and batch for all rows."),
+    execution: Optional[str] = typer.Option(None, help="Execution mode: sync or batch. Defaults to sync for a selection and batch for all rows. The openai_compatible provider supports only sync."),
+    dedupe: bool = typer.Option(False, "--dedupe", help="If duplicate record IDs or duplicate sent-field content are found, write a deduplicated copy of the input (keeping the first occurrence of each group) and prepare the run from it instead of failing validation."),
 ):
     """Select records and create an immutable, inspectable, costed run.
 
     Full run: `kllm-batch prepare -c project.yaml --provider openai`.
     Pilot: add `--sample-size 20 --seed 42`; or use `--ids-file IDs.txt`.
+    Add `--dedupe` to auto-fix duplicate IDs/content instead of failing.
     Preparation is local and free. Start with REVIEW.md, then inspect the exact
     provider JSONL—including its rendered prompts—before submitting.
     """
@@ -203,9 +210,16 @@ def prepare_command(
             seed=seed,
             ids_file=ids_file,
             execution=execution,
+            dedupe=dedupe,
         )
         manifest = json.loads((run_dir / "manifest.json").read_text())
         console.print(f"Prepared run: [bold]{run_dir}[/bold]")
+        if manifest.get("dedupe"):
+            info = manifest["dedupe"]
+            console.print(
+                f"[yellow]Deduplicated input:[/yellow] dropped {info['rows_dropped']:,} duplicate "
+                f"row(s) out of {info['original_rows']:,}; wrote {info['deduplicated_path']}"
+            )
         console.print(f"Purpose: {manifest['purpose']} | Selection: {manifest['selection']['method']} | Execution: {manifest['execution']}")
         console.print(f"Selected rows: {manifest['selected_rows']:,} of {manifest['source_total_rows']:,}")
         console.print(f"Estimated maximum cost: ${manifest['cost_estimate']['estimated_usd']:.4f}")
@@ -216,6 +230,9 @@ def prepare_command(
         )
         console.print(f"Inspect: {run_dir / 'REVIEW.md'}")
         console.print(f"Submit with: kllm-batch submit {run_dir}")
+    except ProjectValidationError as exc:
+        _print_validation(exc.report)
+        raise typer.Exit(1)
     except Exception as exc:
         _fail(exc)
 

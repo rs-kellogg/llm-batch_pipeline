@@ -1,8 +1,11 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from kellogg_llm_batch.providers.anthropic import AnthropicAdapter
 from kellogg_llm_batch.providers.openai import OpenAIAdapter
+from kellogg_llm_batch.providers.openai_compatible import DEFAULT_PLACEHOLDER_API_KEY, OpenAICompatibleAdapter
 
 
 SCHEMA = {"type": "object", "properties": {}, "required": [], "additionalProperties": False}
@@ -218,3 +221,132 @@ def test_anthropic_mocked_batch_lifecycle(tmp_path):
     output, errors = tmp_path / "output.jsonl", tmp_path / "errors.jsonl"
     adapter.download("batch_1", output, errors)
     assert json.loads(output.read_text(encoding="utf-8"))["result"]["type"] == "expired"
+
+
+def test_openai_compatible_payload_uses_chat_completions_structured_output():
+    options = {"temperature": 0, "future_option": True}
+    payload = OpenAICompatibleAdapter(client=object()).build_payload(
+        "request_1", "llama3.1:8b", "system", "user", SCHEMA, 100, options
+    )
+    assert payload["url"] == "/v1/chat/completions"
+    assert payload["body"]["messages"] == [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "user"},
+    ]
+    assert payload["body"]["max_tokens"] == 100
+    assert payload["body"]["response_format"]["json_schema"]["schema"] == SCHEMA
+    assert payload["body"]["temperature"] == 0
+    assert payload["body"]["future_option"] is True
+
+
+def test_openai_compatible_normalizes_chat_completions_line():
+    adapter = OpenAICompatibleAdapter(client=object())
+    result = adapter.normalize_line({
+        "custom_id": "request_1",
+        "response": {
+            "status_code": 200,
+            "body": {
+                "model": "llama3.1:8b",
+                "choices": [{"message": {"content": '{"results": []}'}}],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 4},
+            },
+        },
+    })
+    assert result.status == "succeeded"
+    assert result.response_text == '{"results": []}'
+    assert result.input_tokens == 12
+    assert result.output_tokens == 4
+
+
+def test_openai_compatible_normalizes_http_error():
+    adapter = OpenAICompatibleAdapter(client=object())
+    result = adapter.normalize_line({
+        "custom_id": "request_1",
+        "response": {"status_code": 500, "body": {"error": "boom"}},
+    })
+    assert result.status == "errored"
+    assert result.error_type == "http_error"
+
+
+def test_openai_compatible_normalizes_missing_message_content():
+    adapter = OpenAICompatibleAdapter(client=object())
+    result = adapter.normalize_line({
+        "custom_id": "request_1",
+        "response": {"status_code": 200, "body": {"choices": []}},
+    })
+    assert result.status == "errored"
+    assert result.error_type == "missing_output_text"
+
+
+def test_openai_compatible_sync_request_keeps_provider_options():
+    class Completions:
+        @staticmethod
+        def create(**kwargs):
+            assert kwargs["temperature"] == 0
+            return SimpleNamespace(
+                model_dump=lambda: {
+                    "model": "llama3.1:8b",
+                    "choices": [{"message": {"content": '{"results": []}'}}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                }
+            )
+
+    adapter = OpenAICompatibleAdapter(client=SimpleNamespace(chat=SimpleNamespace(completions=Completions())))
+    payload = adapter.build_payload(
+        "request_1",
+        "llama3.1:8b",
+        "system",
+        "user",
+        SCHEMA,
+        100,
+        {"temperature": 0},
+    )
+
+    assert adapter.run_sync(payload).status == "succeeded"
+
+
+@pytest.mark.parametrize("method_name", ["submit", "status", "cancel", "download"])
+def test_openai_compatible_batch_methods_raise_not_implemented(method_name, tmp_path):
+    adapter = OpenAICompatibleAdapter(client=object())
+    method = getattr(adapter, method_name)
+    args = {
+        "submit": (tmp_path / "requests.jsonl",),
+        "status": ("batch_1",),
+        "cancel": ("batch_1",),
+        "download": ("batch_1", tmp_path / "output.jsonl", tmp_path / "errors.jsonl"),
+    }[method_name]
+    with pytest.raises(NotImplementedError, match="only supports execution='sync'"):
+        method(*args)
+
+
+def test_openai_compatible_client_requires_base_url():
+    adapter = OpenAICompatibleAdapter()
+    with pytest.raises(ValueError, match="base_url is required"):
+        adapter.client
+
+
+def test_openai_compatible_client_uses_base_url_and_placeholder_key(monkeypatch):
+    captured = {}
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    adapter = OpenAICompatibleAdapter(base_url="http://localhost:11434/v1")
+    adapter.client
+    assert captured["base_url"] == "http://localhost:11434/v1"
+    assert captured["api_key"] == DEFAULT_PLACEHOLDER_API_KEY
+
+
+def test_openai_compatible_client_uses_explicit_api_key(monkeypatch):
+    captured = {}
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    adapter = OpenAICompatibleAdapter(base_url="http://localhost:8000/v1", api_key="abc")
+    adapter.client
+    assert captured["api_key"] == "abc"

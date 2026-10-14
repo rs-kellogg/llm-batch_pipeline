@@ -57,6 +57,17 @@ def normalize_id(value: Any) -> str | None:
     return None if normalized is None else str(normalized).strip() or None
 
 
+def write_table(df: pd.DataFrame, path: Path, fmt: str, csv_encoding: str = "utf-8") -> None:
+    if fmt == "csv":
+        df.to_csv(path, index=False, encoding=csv_encoding)
+    elif fmt == "parquet":
+        df.to_parquet(path, index=False)
+    elif fmt == "jsonl":
+        df.to_json(path, orient="records", lines=True, force_ascii=False)
+    else:
+        raise ValueError(f"Unsupported input format: {fmt}")
+
+
 def load_source(config: ProjectConfig) -> tuple[pd.DataFrame, Path, str]:
     source = config.resolve(config.input.path)
     fmt = infer_format(source, config.input.format)

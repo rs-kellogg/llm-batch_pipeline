@@ -637,12 +637,28 @@ def _settings_and_save(draft: ProjectDraft) -> None:
 
         st.markdown("**providers**")
         existing = config.get("providers", {})
-        selected = st.multiselect("Providers", ["openai", "anthropic"], default=list(existing) or ["openai"])
+        selected = st.multiselect(
+            "Providers", ["openai", "anthropic", "openai_compatible"], default=list(existing) or ["openai"]
+        )
         providers = {}
-        defaults = {"openai": "gpt-5.4-mini", "anthropic": "claude-haiku-4-5"}
+        defaults = {"openai": "gpt-5.4-mini", "anthropic": "claude-haiku-4-5", "openai_compatible": "llama3.1:8b"}
         for name in selected:
             item = dict(existing.get(name, {}))
             item["model"] = st.text_input(f"{name} model", value=item.get("model", defaults[name]), key=f"model_{name}")
+            if name == "openai_compatible":
+                item["base_url"] = st.text_input(
+                    f"{name} base_url",
+                    value=item.get("base_url", "http://localhost:11434/v1"),
+                    key=f"base_url_{name}",
+                    help="OpenAI-compatible endpoint, e.g. an Ollama or vLLM server.",
+                )
+                api_key_env_var = st.text_input(
+                    f"{name} api_key_env_var (optional)",
+                    value=item.get("api_key_env_var") or "",
+                    key=f"api_key_env_{name}",
+                    help="Environment variable holding an API key, only if your server requires one.",
+                )
+                item["api_key_env_var"] = api_key_env_var or None
             options_json = st.text_area(
                 f"{name} options (JSON)",
                 value=json.dumps(item.get("options", {}), indent=2, ensure_ascii=False),

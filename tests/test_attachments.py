@@ -30,6 +30,7 @@ def _project(tmp_path: Path) -> tuple[Path, Path]:
     config_path = root / "project.yaml"
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     config["task"]["rows_per_request"] = 1
+    config["providers"]["anthropic"] = {"model": "claude-haiku-4-5"}
     config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     data_path = root / "data" / "input-data.csv"
     frame = pd.read_csv(data_path, dtype=str).iloc[:2].copy()
@@ -59,7 +60,7 @@ def test_attached_requests_preserve_original_and_submit_attached(tmp_path, provi
     assert (run / "api_requests" / "segment_0000.jsonl").read_bytes() == original
     assert after["cost_estimate"] == before["cost_estimate"]
     assert after["file_attachments"]["cost_estimate_scope"] == "text_only_excludes_files"
-    assert {item["record_id"] for item in after["file_attachments"]["files"]} == {"GRANT-001", "GRANT-002"}
+    assert {item["record_id"] for item in after["file_attachments"]["files"]} == {"EX-001", "EX-002"}
     attached_path = run / after["file_attachments"]["request_files"]["0"]
     assert after["prepared_artifact_sha256"][str(attached_path.relative_to(run))] == sha256_file(attached_path)
     payloads = ProviderAdapter.read_jsonl(attached_path)
@@ -90,6 +91,22 @@ def test_attached_requests_preserve_original_and_submit_attached(tmp_path, provi
     assert _manifest(run)["file_attachments"]["status"] == "ready"
 
 
+def test_attach_files_rejects_openai_compatible(tmp_path):
+    config, files_dir = _project(tmp_path)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["providers"]["openai_compatible"] = {
+        "model": "llama3.1:8b",
+        "base_url": "http://localhost:11434/v1",
+        "sync_input_price_per_million": 0,
+        "sync_output_price_per_million": 0,
+    }
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    run = prepare_run(config, "openai_compatible", execution="sync")
+
+    with pytest.raises(ValueError, match="Unsupported provider for attachments"):
+        attach_files_to_run(run, column="attachment_file", files_dir=files_dir, acknowledge_unestimated_cost=True)
+
+
 def test_text_only_request_and_manifest_remain_unchanged(tmp_path):
     config, _ = _project(tmp_path)
     run = prepare_run(config, "openai", execution="batch")
@@ -108,7 +125,7 @@ def test_text_only_retry_needs_no_attachment_step(tmp_path):
     run = prepare_run(config, "openai", execution="batch")
     outputs = run / "outputs"
     outputs.mkdir()
-    (outputs / "failures.jsonl").write_text(json.dumps({"record_id": "GRANT-001", "category": "errored"}) + "\n", encoding="utf-8")
+    (outputs / "failures.jsonl").write_text(json.dumps({"record_id": "EX-001", "category": "errored"}) + "\n", encoding="utf-8")
     child = prepare_retry(run)
     assert "file_attachments" not in _manifest(child)
     fake = FakeAdapter()
@@ -197,7 +214,7 @@ def test_cli_attachment_and_submission_warn_about_unknown_cost(tmp_path, monkeyp
     assert result.exit_code == 0, result.stdout
     assert "Total cost is unknown" in result.stdout
     fake = FakeAdapter()
-    monkeypatch.setattr(core, "get_provider", lambda name: fake)
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: fake)
     result = runner.invoke(app, ["submit", str(run), "--yes"])
     assert result.exit_code == 0, result.stdout
     assert "File input cost is unknown" in result.stdout
@@ -244,7 +261,7 @@ def test_attached_retry_requires_reattachment(tmp_path):
     attach_files_to_run(run, column="attachment_file", files_dir=files_dir, acknowledge_unestimated_cost=True)
     outputs = run / "outputs"
     outputs.mkdir()
-    (outputs / "failures.jsonl").write_text(json.dumps({"record_id": "GRANT-001", "category": "errored"}) + "\n", encoding="utf-8")
+    (outputs / "failures.jsonl").write_text(json.dumps({"record_id": "EX-001", "category": "errored"}) + "\n", encoding="utf-8")
     child = prepare_retry(run)
     assert _manifest(child)["file_attachments"]["status"] == "required"
     fake = FakeAdapter()
@@ -263,7 +280,7 @@ def test_retry_rejects_file_changed_since_parent(tmp_path):
     attach_files_to_run(run, column="attachment_file", files_dir=files_dir, acknowledge_unestimated_cost=True)
     outputs = run / "outputs"
     outputs.mkdir()
-    (outputs / "failures.jsonl").write_text(json.dumps({"record_id": "GRANT-001", "category": "errored"}) + "\n", encoding="utf-8")
+    (outputs / "failures.jsonl").write_text(json.dumps({"record_id": "EX-001", "category": "errored"}) + "\n", encoding="utf-8")
     child = prepare_retry(run)
     (files_dir / "first.png").write_bytes(PNG_BYTES + b"changed")
     with pytest.raises(ValueError, match="changed since the parent run"):

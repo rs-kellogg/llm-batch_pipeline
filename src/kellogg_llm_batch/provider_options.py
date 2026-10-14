@@ -22,6 +22,13 @@ RESERVED_PROVIDER_OPTIONS: dict[str, set[str]] = {
         "stream",
         "system",
     },
+    "openai_compatible": {
+        "max_tokens",
+        "messages",
+        "model",
+        "response_format",
+        "stream",
+    },
 }
 
 OPENAI_REASONING_EFFORTS = {
@@ -63,6 +70,9 @@ def validate_provider_options(provider: str, options: dict[str, Any]) -> None:
         _validate_number(options, "top_p", minimum=0, maximum=1)
         _validate_integer(options, "top_k", minimum=0)
         _validate_stop_sequences(options)
+    elif provider == "openai_compatible":
+        _validate_number(options, "temperature", minimum=0, maximum=2)
+        _validate_number(options, "top_p", minimum=0, maximum=1)
 
 
 def uses_multiple_sampling_controls(options: dict[str, Any]) -> bool:

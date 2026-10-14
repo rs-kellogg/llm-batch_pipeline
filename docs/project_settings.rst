@@ -5,8 +5,11 @@ Project settings
 
 ``project.yaml`` tells ``kllm-batch`` where to find your data, what to send to
 the model, and how to prepare a run. Paths in this file are relative to the
-directory containing ``project.yaml``. The examples below come from
-``kllm-batch init my-project``; edit them for your own research, then run
+directory containing ``project.yaml``. The examples below come from the
+checked-in :doc:`grant_coding` example (``examples/grant_coding``), a fully
+worked project you can copy as a starting point; ``kllm-batch init my-project``
+itself scaffolds a bare single-task template instead (see
+:ref:`basic-workflow`). Edit either one for your own research, then run
 ``kllm-batch validate -c my-project/project.yaml`` before preparing a run.
 You can edit the file directly or use the local :ref:`project builder
 <optional-gui>`.
@@ -129,14 +132,19 @@ Providers and budget
            effort: low
      anthropic:
        model: claude-haiku-4-5
+     openai_compatible:
+       model: llama3.1:8b
+       base_url: http://localhost:11434/v1
+       sync_input_price_per_million: 0
+       sync_output_price_per_million: 0
 
    budget:
      max_estimated_usd: 5.0
 
 * ``providers`` — the models available to this project. ``prepare --provider
-  openai`` or ``prepare --provider anthropic`` chooses one for a run; listing
-  providers here does not contact them. Credentials come from environment
-  variables, not this file.
+  openai``, ``prepare --provider anthropic``, or ``prepare --provider
+  openai_compatible`` chooses one for a run; listing providers here does not
+  contact them. Credentials come from environment variables, not this file.
 * ``options`` — provider-native generation settings copied into every request
   for that provider. The starter uses low reasoning effort for the OpenAI
   reasoning model and leaves Anthropic options unset, so Claude uses the
@@ -184,6 +192,39 @@ configuration, so their provider request keys cannot be supplied under
 ``RUN_DIR/api_requests/segment_*.jsonl`` and the normalized copy in
 ``RUN_DIR/manifest.json`` under ``provider_options`` before submission.
 
+``openai_compatible``: self-hosted Ollama and vLLM servers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``openai_compatible`` sends requests to any server that implements the
+OpenAI Chat Completions wire format — most commonly a local Ollama install
+(``http://localhost:11434/v1``) or a vLLM OpenAI-compatible server
+(``http://localhost:8000/v1``). Unlike ``openai``/``anthropic``, this
+provider requires two extra fields:
+
+* ``base_url`` — **required**. The OpenAI-compatible endpoint to send
+  requests to.
+* ``api_key_env_var`` — optional. The name of an environment variable
+  holding a bearer token, only needed if your server sits behind auth (most
+  local deployments do not require one). As with every other provider,
+  the key's *value* never goes in ``project.yaml`` — only the variable name
+  does. If omitted, a non-secret placeholder key is sent, since the
+  underlying SDK requires a non-empty string.
+
+This provider only supports ``execution: sync`` (``prepare --execution
+sync``, or a ``--sample-size``/``--ids-file`` pilot, which defaults to sync
+automatically): neither Ollama nor vLLM expose an asynchronous batch-job API
+like OpenAI Batches or Anthropic Message Batches, so there is no
+submit/status/cancel/download lifecycle to use here. Preparing with
+``--execution batch`` fails immediately, before any run directory is
+created.
+
+Because there is no built-in price table for arbitrary local model names,
+set ``sync_input_price_per_million`` and ``sync_output_price_per_million``
+explicitly — typically ``0`` for self-hosted compute you already pay for
+another way — or ``prepare`` will refuse to proceed with "no pricing is
+configured". File attachments (:doc:`file_attachments`) are not supported
+for this provider.
+
 See :doc:`installation` for credentials and :doc:`advanced` for provider
 options, pricing overrides, and batch limits.
 
@@ -200,6 +241,7 @@ Evaluation and output
    output:
      write_parquet: true
      write_csv: true
+     include_input_columns: true
      runs_directory: runs
 
 * ``random_seed`` — used for deterministic input-row sampling when ``prepare
@@ -217,6 +259,13 @@ Evaluation and output
   see :doc:`basic`.)
 * ``write_parquet`` / ``write_csv`` — whether to write results in each
   format; the starter writes both.
+* ``include_input_columns`` — whether ``results.csv``/``results.parquet``
+  (and ``merged.csv``/``merged.parquet`` from ``kllm-batch merge``) include the
+  configured ``fields_sent``/``columns_preserved`` input columns alongside the
+  model output. Defaults to ``true``. Set to ``false`` to drop those input
+  columns and keep the files smaller; ``record_id`` and all provenance/output
+  columns are always kept, so results can still be joined back to the
+  original input file on ``record_id``.
 * ``runs_directory`` — where each prepared run gets its own subdirectory
   (``runs`` in the starter), separate from the original input data.
 

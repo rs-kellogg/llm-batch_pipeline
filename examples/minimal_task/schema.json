@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string"
+    },
+    "rationale": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "label",
+    "rationale"
+  ],
+  "additionalProperties": false
+}

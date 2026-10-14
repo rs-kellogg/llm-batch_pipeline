@@ -12,8 +12,10 @@ from kellogg_llm_batch.provider_options import validate_provider_options
     [
         ("openai", {"temperature": 0, "top_p": 1, "reasoning": {"effort": "low"}}),
         ("anthropic", {"temperature": 0, "top_p": 1, "top_k": 0, "stop_sequences": ["END"]}),
+        ("openai_compatible", {"temperature": 0, "top_p": 1}),
         ("openai", {"new_provider_option": {"enabled": True}}),
         ("anthropic", {"new_provider_option": {"enabled": True}}),
+        ("openai_compatible", {"new_provider_option": {"enabled": True}}),
     ],
 )
 def test_valid_provider_options(provider, options):
@@ -34,6 +36,9 @@ def test_valid_provider_options(provider, options):
         ("anthropic", {"seed": 42}, "select input rows only"),
         ("openai", {"input": "replacement"}, "package-managed"),
         ("anthropic", {"messages": []}, "package-managed"),
+        ("openai_compatible", {"temperature": 2.1}, "between 0 and 2"),
+        ("openai_compatible", {"messages": []}, "package-managed"),
+        ("openai_compatible", {"seed": 42}, "select input rows only"),
         ("openai", {"metadata_date": date(2026, 10, 7)}, "JSON-serializable"),
         ("openai", {"temperature": float("nan")}, "JSON-serializable"),
     ],

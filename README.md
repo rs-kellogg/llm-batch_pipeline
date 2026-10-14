@@ -47,8 +47,12 @@ Create and validate a project, then prepare a small deterministic pilot:
 kllm-batch init my-project
 kllm-batch validate -c my-project/project.yaml
 kllm-batch prepare -c my-project/project.yaml --provider openai \
-  --sample-size 4 --seed 42
+  --sample-size 2 --seed 42
 ```
+
+`init` scaffolds a bare single-task template with two placeholder rows, ready
+to replace with your own data, prompts, and schema. For a complete worked
+example with a codebook and multiple labels, copy `examples/grant_coding`.
 
 The standard installation also includes the local project builder. Run
 `kllm-batch gui my-project` to edit the initialized project in your browser.

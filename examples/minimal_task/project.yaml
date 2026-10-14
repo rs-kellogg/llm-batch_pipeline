@@ -1,0 +1,33 @@
+version: 1
+
+project:
+  name: my-task
+  description: TODO describe what this task classifies or extracts.
+
+input:
+  path: data/input-data.csv
+  format: auto
+  id_column: id
+  csv_encoding: utf-8
+  fields_sent:
+    text: text
+  required_fields: []
+  missing_required: error
+
+task:
+  rows_per_request: 1
+  output_schema: schema.json
+  max_output_tokens: 500
+
+prompt:
+  version: "1.0"
+  system_file: prompts/system.txt
+  user_file: prompts/user.txt
+
+providers:
+  openai:
+    model: gpt-5-mini
+
+budget:
+  max_estimated_usd: 5.0
+

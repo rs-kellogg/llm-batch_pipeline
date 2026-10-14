@@ -45,7 +45,7 @@ def test_prepare_300000_rows_with_compact_state(example_config, tmp_path, monkey
     config = tmp_path / "large-project.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
 
-    monkeypatch.setattr(core, "get_provider", lambda name: FakeAdapter())
+    monkeypatch.setattr(core, "get_provider", lambda name, **_: FakeAdapter())
     run = prepare_run(config, "openai")
     manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
     state = json.loads((run / "state.json").read_text(encoding="utf-8"))
