@@ -43,6 +43,10 @@ recovery guidance.
      - ``kllm-batch status RUN_DIR``
      - Provider
      - Refresh a batch run's remote state once.
+   * - ``note``
+     - ``kllm-batch note RUN_DIR "message"``
+     - Local
+     - Append a timestamped note to a run's ``notes.jsonl``.
    * - ``sync``
      - ``kllm-batch sync RUN_DIR [--watch] [--poll-seconds N]``
      - Provider

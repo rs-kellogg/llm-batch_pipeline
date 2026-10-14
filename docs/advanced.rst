@@ -391,6 +391,13 @@ selection, execution, hash, and cost information. Essential row provenance is
 included in result and failure rows. Raw responses, earlier attempts, and
 source inputs are never patched by processing commands.
 
+``manifest.json`` and ``state.json`` are program-written and should not be
+hand-edited. For your own commentary — why a run was made, what changed since
+the last one — append to ``notes.jsonl`` with
+``kllm-batch note RUN_DIR "message"``, or open the file directly; it is a
+plain JSON Lines list of ``{"timestamp", "author", "message"}`` entries that
+``status`` reports a count for when present.
+
 Protect research data
 ---------------------
 

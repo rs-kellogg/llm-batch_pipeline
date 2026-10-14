@@ -410,6 +410,46 @@ def test_status_command_formats_openai_cancellation_without_invented_counts(
     assert "no requests cancelled" not in result.stdout
 
 
+def test_note_command_appends_jsonl_entry(tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    result = runner.invoke(app, ["note", str(run_dir), "re-ran after fixing schema typo"])
+
+    assert result.exit_code == 0
+    lines = (run_dir / "notes.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    entry = json.loads(lines[0])
+    assert entry["message"] == "re-ran after fixing schema typo"
+    assert entry["timestamp"]
+    assert entry["author"]
+
+
+def test_note_command_appends_multiple_entries_without_clobbering(tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    runner.invoke(app, ["note", str(run_dir), "first note"])
+    runner.invoke(app, ["note", str(run_dir), "second note"])
+
+    lines = (run_dir / "notes.jsonl").read_text(encoding="utf-8").splitlines()
+    messages = [json.loads(line)["message"] for line in lines]
+    assert messages == ["first note", "second note"]
+
+
+def test_status_command_surfaces_note_count(tmp_path, monkeypatch):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    state = {"run_id": "note-surface-test", "status": "completed", "segments": []}
+    monkeypatch.setattr("kellogg_llm_batch.cli.status_run", lambda run: state)
+
+    runner.invoke(app, ["note", str(run_dir), "noted"])
+    result = runner.invoke(app, ["status", str(run_dir)])
+
+    assert result.exit_code == 0
+    assert "1 note(s)" in result.stdout
+
+
 def test_submit_command_targets_segment_range(
     example_config, tmp_path, monkeypatch
 ):

@@ -16,7 +16,7 @@ from rich.table import Table
 from .attachments import attach_files_to_run
 from .core import audit_run, batch_submission_summary, cancel_run, compare_runs, extrapolate_cost_from_run, find_incomplete_runs, merge_run, prepare_retry, prepare_run, status_run, submit_run, summarize_cancellation, sync_checkpoint_progress, sync_run
 from .scaffold import scaffold_project
-from .state import load_state, resolve_run
+from .state import add_note, load_notes, load_state, resolve_run
 from .validation import ProjectValidationError, validate_project
 
 
@@ -469,6 +469,31 @@ def status_command(run: Path = typer.Argument(..., help="Run directory.")):
     try:
         state = status_run(run)
         _print_state(state)
+        try:
+            notes = load_notes(resolve_run(run))
+        except FileNotFoundError:
+            notes = []
+        if notes:
+            console.print(f"[dim]{len(notes)} note(s) — see notes.jsonl, or `kllm-batch note RUN_DIR \"...\"` to add one.[/dim]")
+    except Exception as exc:
+        _fail(exc)
+
+
+@app.command("note")
+def note_command(
+    run: Path = typer.Argument(..., help="Run directory."),
+    message: str = typer.Argument(..., help="Note text to append."),
+):
+    """Append a timestamped note to a run, for example why it was run or what changed.
+
+    Example: `kllm-batch note RUN_DIR "re-ran after fixing a schema typo"`. Local
+    and free. Notes are append-only, stored in notes.jsonl inside the run
+    directory; you can also open that file and edit or add entries by hand.
+    """
+    try:
+        run_dir = resolve_run(run)
+        add_note(run_dir, message)
+        console.print(f"Added note to [bold]{run_dir.name}[/bold].")
     except Exception as exc:
         _fail(exc)
 
