@@ -220,3 +220,42 @@ def test_evaluation_gold_mapping_is_validated(example_config, tmp_path, gold_col
     with pytest.raises(ProjectValidationError) as exc:
         validate_project(config)
     assert code in {finding["code"] for finding in exc.value.report["findings"]}
+
+
+def test_field_placeholders_render_one_record_with_null_as_empty():
+    from kellogg_llm_batch.prompts import render_user_prompt, validate_template
+
+    template = "<t>${field_title}</t> by ${field_author} (${field_record_id})"
+    validate_template(template, {}, ["title", "author"], rows_per_request=1)
+    records = [{"record_id": "7", "title": "Solar $cells", "author": None}]
+    assert render_user_prompt(template, records, {}) == "<t>Solar $cells</t> by  (7)"
+
+
+def test_field_placeholders_validation_errors():
+    from kellogg_llm_batch.prompts import validate_template
+
+    with pytest.raises(ValueError, match="rows_per_request must be 1"):
+        validate_template("${field_title}", {}, ["title"], rows_per_request=3)
+    with pytest.raises(ValueError, match="Unknown prompt placeholders"):
+        validate_template("${field_missing}", {}, ["title"], rows_per_request=1)
+    with pytest.raises(ValueError, match="must contain"):
+        validate_template("no placeholders", {}, ["title"], rows_per_request=1)
+    # existing behavior unchanged: records_json alone is valid at any batch size
+    validate_template("${records_json}", {}, ["title"], rows_per_request=3)
+
+
+def test_field_placeholders_end_to_end_validate_project(example_config, tmp_path):
+    raw = yaml.safe_load(example_config.read_text())
+    _absolute_support_paths(raw, example_config)
+    raw["input"]["path"] = str(example_config.parent / "data" / "input-data.csv")
+    raw["task"]["rows_per_request"] = 1
+    user_prompt = tmp_path / "user.txt"
+    user_prompt.write_text("Codebook: ${codebook_json}\n<abstract>${field_abstract}</abstract>\n", encoding="utf-8")
+    raw["prompt"]["user_file"] = str(user_prompt)
+    config = tmp_path / "field-placeholders.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    report = validate_project(config)
+
+    assert report["valid"] is True
+    assert report["request_count"] == report["source_rows"]

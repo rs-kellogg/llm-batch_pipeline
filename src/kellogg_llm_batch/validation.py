@@ -143,7 +143,7 @@ def _validate_project(config_or_path: ProjectConfig | str | Path, report_path: s
             )
     system_prompt, user_template = load_prompt_files(config)
     context = load_context(config)
-    validate_template(user_template, context)
+    validate_template(user_template, context, config.input.fields_sent, config.task.rows_per_request)
     request_texts = []
     prompt_records_by_request = []
     for start in range(0, len(records), config.task.rows_per_request):

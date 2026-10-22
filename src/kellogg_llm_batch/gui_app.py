@@ -551,6 +551,18 @@ def _prompt_controls(draft: ProjectDraft) -> None:
             unsafe_allow_html=True,
         )
         st.text_area("User prompt template", key="user_prompt", height=260, label_visibility="collapsed")
+        sent_fields = list(draft.config["input"].get("fields_sent", {}))
+        st.caption(
+            "Optional: with 1 row per request, insert a column's raw value with "
+            + ", ".join(f"${{field_{name}}}" for name in ["record_id", *sent_fields])
+            + ". Wrap them in tags such as <text>...</text> and tell the model tagged text is data."
+        )
+        sent_fields = list(draft.config["input"].get("fields_sent", {}))
+        st.caption(
+            "Optional: with 1 row per request, insert a column's raw value with "
+            + ", ".join(f"${{field_{name}}}" for name in ["record_id", *sent_fields])
+            + ". Wrap them in tags such as <text>...</text> and tell the model tagged text is data."
+        )
         draft.system_prompt = st.session_state.system_prompt
         draft.user_prompt = st.session_state.user_prompt
         task = draft.config["task"]

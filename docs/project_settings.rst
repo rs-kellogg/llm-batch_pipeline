@@ -113,7 +113,9 @@ Prompts and codebook
   (``"1.0"``) so YAML reads it as a string, and update it when you
   intentionally revise the prompt.
 * ``system_file`` / ``user_file`` — the model instructions. The user prompt
-  must insert ``${records_json}`` for each request.
+  must insert ``${records_json}`` for each request, or use
+  ``${field_<column>}`` placeholders with ``rows_per_request: 1`` (see
+  :ref:`field-placeholders`).
 * ``context.codebook`` — a named context file, inserted as
   ``${codebook_json}``. ``format: auto`` works by filename extension; ``csv``
   states it explicitly, as the starter does. Keep codebook labels aligned

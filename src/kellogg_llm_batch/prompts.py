@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from string import Template
-from typing import Any
+from typing import Any, Iterable
 
 import pandas as pd
 import yaml
@@ -57,8 +57,27 @@ def load_prompt_files(config: ProjectConfig) -> tuple[str, str]:
     return system_path.read_text(encoding="utf-8"), user_path.read_text(encoding="utf-8")
 
 
-def validate_template(template_text: str, context: dict[str, str]) -> None:
-    allowed = set(context) | {"records_json"}
+FIELD_PREFIX = "field_"
+
+
+def field_placeholder_names(field_names: Iterable[str]) -> set[str]:
+    """Placeholders available for per-record columns: ``record_id`` plus each sent field."""
+    return {f"{FIELD_PREFIX}{name}" for name in ["record_id", *field_names]}
+
+
+def validate_template(
+    template_text: str,
+    context: dict[str, str],
+    field_names: Iterable[str] = (),
+    rows_per_request: int | None = None,
+) -> None:
+    """Check user-prompt placeholders.
+
+    ``${field_<column>}`` placeholders insert one record's raw value, so they require
+    ``rows_per_request == 1``; ``${records_json}`` is then optional.
+    """
+    field_allowed = field_placeholder_names(field_names)
+    allowed = set(context) | {"records_json"} | field_allowed
     identifiers: set[str] = set()
     for match in Template.pattern.finditer(template_text):
         if match.group("invalid") is not None:
@@ -69,11 +88,20 @@ def validate_template(template_text: str, context: dict[str, str]) -> None:
     unknown = sorted(identifiers - allowed)
     if unknown:
         raise ValueError(f"Unknown prompt placeholders: {unknown}; allowed: {sorted(allowed)}")
-    if "records_json" not in identifiers:
-        raise ValueError("User prompt must contain ${records_json}")
+    used_fields = (identifiers & field_allowed) - set(context)
+    if used_fields and rows_per_request not in (None, 1):
+        raise ValueError(
+            f"Field placeholders {sorted(used_fields)} insert one record's values, so task.rows_per_request must be 1 "
+            f"(currently {rows_per_request})"
+        )
+    if "records_json" not in identifiers and not used_fields:
+        raise ValueError("User prompt must contain ${records_json} or at least one ${field_<column>} placeholder")
 
 
 def render_user_prompt(template_text: str, records: list[dict[str, Any]], context: dict[str, str]) -> str:
     substitutions = dict(context)
     substitutions["records_json"] = json.dumps(records, ensure_ascii=False, separators=(",", ":"))
+    if len(records) == 1:
+        for name, value in records[0].items():
+            substitutions.setdefault(f"{FIELD_PREFIX}{name}", "" if value is None else str(value))
     return Template(template_text).substitute(substitutions)
