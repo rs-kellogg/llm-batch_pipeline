@@ -30,6 +30,10 @@ prompt:
   version: "1.0"
   system_file: prompts/system.txt
   user_file: prompts/user.txt
+  context:
+    codebook:
+      path: context/codebook.csv
+      format: csv
 
 providers:
   openai:
@@ -63,14 +67,24 @@ EX-001,Replace this with one example record for your task.
 EX-002,Add a second example record here.
 """
 
+CODEBOOK_CSV = """label,definition
+LABEL_A,Replace with the definition of your first label and when to choose it.
+LABEL_B,Replace with the definition of your second label and when to choose it.
+"""
+
 SYSTEM_PROMPT = """You are a careful classifier. Replace this prompt with instructions for your
-own task: define the label values, the decision rules for choosing between
-them, and what evidence in the record to use. Return only the JSON object
+own task: define the label values (list them with definitions in
+context/codebook.csv), the decision rules for choosing between them, and what
+evidence in the record to use. Return only the JSON object
 requested below. Return one result for every record_id.
 
 """
 
-USER_PROMPT = """Classify every record below:
+USER_PROMPT = """Apply this codebook:
+
+${codebook_json}
+
+Classify every record below:
 
 ${records_json}
 
@@ -87,6 +101,7 @@ def scaffold_project(directory: str | Path) -> Path:
     (root / "schema.json").write_text(SCHEMA, encoding="utf-8")
     (root / "prompts" / "system.txt").write_text(SYSTEM_PROMPT, encoding="utf-8")
     (root / "prompts" / "user.txt").write_text(USER_PROMPT, encoding="utf-8")
+    (root / "context" / "codebook.csv").write_text(CODEBOOK_CSV, encoding="utf-8")
     (root / "data" / "input-data.csv").write_text(INPUT_CSV, encoding="utf-8")
     (root / ".gitignore").write_text("runs/\n.env\n", encoding="utf-8")
     return root

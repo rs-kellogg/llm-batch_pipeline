@@ -1,3 +1,7 @@
+Apply this codebook:
+
+${codebook_json}
+
 Classify every record below:
 
 ${records_json}

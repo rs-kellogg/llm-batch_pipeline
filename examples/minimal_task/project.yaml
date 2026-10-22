@@ -23,6 +23,10 @@ prompt:
   version: "1.0"
   system_file: prompts/system.txt
   user_file: prompts/user.txt
+  context:
+    codebook:
+      path: context/codebook.csv
+      format: csv
 
 providers:
   openai:

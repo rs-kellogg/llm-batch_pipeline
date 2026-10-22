@@ -23,7 +23,7 @@ The important files are:
 
    my-project/
    ├── data/input-data.csv
-   ├── context/
+   ├── context/codebook.csv
    ├── prompts/system.txt
    ├── prompts/user.txt
    ├── project.yaml
@@ -36,13 +36,18 @@ The important files are:
   ``text``; add more columns to ``fields_sent``/``columns_preserved`` as your
   task needs them.
 * ``prompts/system.txt`` / ``prompts/user.txt`` — placeholders telling you to
-  define your own label values and decision rules; the user prompt must keep
-  the ``${records_json}`` placeholder.
+  define your own label values and decision rules; the user prompt inserts the
+  codebook with ``${codebook_json}`` and must keep ``${records_json}`` (or use
+  ``${field_<column>}`` placeholders; see :ref:`field-placeholders`).
 * ``schema.json`` — a minimal two-field contract (``label``, ``rationale``)
   to replace with your task's actual output fields. The package adds
   ``record_id`` and the outer ``results`` array.
-* ``context/`` — empty by default; add a context file (e.g. a codebook) here
-  and reference it under ``prompt.context`` if your task needs one.
+* ``context/codebook.csv`` — a ``label,definition`` table with two placeholder
+  labels, already wired in under ``prompt.context``. Replace the rows with your
+  own labels and definitions, and keep them aligned with the output fields in
+  ``schema.json``. Other context files (JSON, YAML, text) can be added the same
+  way; if you do not need a codebook, delete the file, the ``prompt.context``
+  block in ``project.yaml``, and ``${codebook_json}`` in the user prompt.
 
 For your own research:
 
