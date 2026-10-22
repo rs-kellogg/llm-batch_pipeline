@@ -25,6 +25,7 @@ def test_scaffold_matches_checked_in_minimal_task_example(tmp_path):
 
     for relative in (
         "data/input-data.csv",
+        "context/codebook.csv",
         "schema.json",
         "prompts/system.txt",
         "prompts/user.txt",
@@ -40,8 +41,7 @@ def test_scaffold_matches_checked_in_minimal_task_example(tmp_path):
     assert "options" not in generated_config["providers"]["openai"]
     assert (root / "runs").is_dir()
     assert not list((root / "runs").iterdir())
-    assert (root / "context").is_dir()
-    assert not list((root / "context").iterdir())
+    assert [path.name for path in (root / "context").iterdir()] == ["codebook.csv"]
     assert (root / ".gitignore").read_text(encoding="utf-8") == "runs/\n.env\n"
 
 
@@ -61,10 +61,13 @@ def test_scaffold_minimal_task_schema_and_preview_agree(tmp_path):
     assert config["input"]["fields_sent"] == {"text": "text"}
     assert config["input"]["required_fields"] == []
     assert "evaluation" not in config
-    assert "context" not in config["prompt"]
+    assert config["prompt"]["context"] == {"codebook": {"path": "context/codebook.csv", "format": "csv"}}
+    codebook = pd.read_csv(root / "context" / "codebook.csv")
+    assert list(codebook.columns) == ["label", "definition"]
 
     preview = render_project_preview(load_project_draft(root))
     assert input_rows.iloc[0]["text"] in preview.user_prompt
+    assert codebook.iloc[0]["label"] in preview.user_prompt
     assert preview.record["record_id"] == input_rows.iloc[0]["id"]
     assert preview.record["text"] == input_rows.iloc[0]["text"]
 

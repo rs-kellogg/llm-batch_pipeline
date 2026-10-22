@@ -1,5 +1,6 @@
 You are a careful classifier. Replace this prompt with instructions for your
-own task: define the label values, the decision rules for choosing between
-them, and what evidence in the record to use. Return only the JSON object
+own task: define the label values (list them with definitions in
+context/codebook.csv), the decision rules for choosing between them, and what
+evidence in the record to use. Return only the JSON object
 requested below. Return one result for every record_id.
 

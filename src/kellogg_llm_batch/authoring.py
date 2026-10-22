@@ -277,7 +277,7 @@ def render_project_preview(draft: ProjectDraft, source_row: int = 0, row_count: 
     selected = records[source_row : source_row + row_count]
     prompt_records = [{"record_id": record.record_id, **record.sent} for record in selected]
     context = _draft_context(draft)
-    validate_template(draft.user_prompt, context)
+    validate_template(draft.user_prompt, context, config.input.fields_sent, row_count)
     return PreviewResult(
         source_rows=list(range(source_row, source_row + len(selected))),
         record_ids=[record.record_id for record in selected],
@@ -487,7 +487,12 @@ def save_project_draft(draft: ProjectDraft) -> SaveResult:
         {**copy.deepcopy(config), "config_path": root / "project.yaml", "base_dir": root}
     )
     validate_output_schema(draft.schema)
-    validate_template(draft.user_prompt, _context_placeholders(config))
+    validate_template(
+        draft.user_prompt,
+        _context_placeholders(config),
+        config.get("input", {}).get("fields_sent") or {},
+        config.get("task", {}).get("rows_per_request"),
+    )
 
     root.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".kllm-gui-", dir=root))
