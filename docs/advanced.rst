@@ -236,6 +236,34 @@ same way as for ``openai``/``anthropic``:
        --sample-size 10 --seed 42
    $ kllm-batch submit SAMPLE_RUN_DIR --yes
 
+A complete example for a Qwen model served on a shared GPU node:
+
+.. code-block:: yaml
+
+   providers:
+     openai_compatible:
+       model: qwen3.5:9b
+       # Change this to the host and port of your own server
+       base_url: http://qgpu0202:8234/v1/
+       sync_input_price_per_million: 0
+       sync_output_price_per_million: 0
+       options:
+         reasoning_effort: none
+
+``base_url`` is the only line you normally need to change. The price fields
+are set to ``0`` because local compute has no per-token charge, and ``prepare``
+refuses to proceed without them.
+
+Qwen3-family models can produce a long hidden "thinking" pass before the
+answer. Setting ``options.reasoning_effort: none`` asks the server to skip it,
+which is usually what you want for classification and extraction: runs are
+faster and the token budget in ``max_output_tokens`` goes to the structured
+answer instead. The value is sent to the server as the top-level
+``reasoning_effort`` request field, and the exact values accepted depend on
+your server and model version, so check its documentation if a different
+level is needed. Options are recorded in the run manifest like those of any
+other provider.
+
 This provider only supports ``execution: sync``: neither Ollama nor vLLM
 expose an asynchronous batch-job API like OpenAI Batches or Anthropic
 Message Batches, so there is no remote batch to submit, poll, or cancel.
